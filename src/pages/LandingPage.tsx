@@ -9,7 +9,7 @@ export const LandingPage = () => {
   if (user) return <Navigate to="/admin" replace />;
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#fbfaf7] text-slate-900">
+    <main className="min-h-screen overflow-x-clip bg-[#fbfaf7] text-slate-900">
       <header className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-5 sm:px-10 lg:px-12">
         <Link to="/" className="flex items-center gap-3" aria-label="School Feeding home">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-700 text-white shadow-lg shadow-emerald-900/15">
@@ -57,13 +57,13 @@ export const LandingPage = () => {
             </Link>
             <a
               href="#how-it-helps"
-              className="inline-flex items-center justify-center rounded-full px-7 py-4 text-base font-semibold text-slate-700 transition hover:bg-white"
+              className="inline-flex items-center justify-center rounded-full px-7 py-4 text-base font-semibold text-slate-700 transition hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
             >
               See how it works
             </a>
           </div>
 
-          <div id="how-it-helps" className="mt-12 grid max-w-lg grid-cols-2 gap-4 border-t border-slate-200 pt-7">
+          <div id="how-it-helps" className="mt-12 grid scroll-mt-8 max-w-lg grid-cols-2 gap-4 border-t border-slate-200 pt-7">
             <div className="flex items-start gap-3">
               <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
                 <Utensils className="h-4 w-4" />
