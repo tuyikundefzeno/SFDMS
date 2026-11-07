@@ -26,6 +26,7 @@ interface SchoolClass {
 interface Student {
   id: string;
   full_name: string;
+  admission_number: string;
   class_id: string;
   status: string;
 }
@@ -65,6 +66,7 @@ interface PaymentIssue {
 }
 
 const FALLBACK_FEE = 24000;
+const LOW_PAYMENT_LIMIT = 5000;
 const MAX_ROWS = 10000;
 const DEFAULT_LANGUAGE: Language = 'English';
 
@@ -142,7 +144,7 @@ const getSchoolData = async (token: string): Promise<SchoolData> => {
   const [semesters, classes, students, payments, fees] = await Promise.all([
     query<Semester>('semesters', 'id,name,start_date,end_date,is_current', '&order=start_date.desc'),
     query<SchoolClass>('classes', 'id,name,level', '&order=name.asc'),
-    query<Student>('students', 'id,full_name,class_id,status', '&order=full_name.asc'),
+    query<Student>('students', 'id,full_name,admission_number,class_id,status', '&order=full_name.asc'),
     query<Payment>('payments', 'id,student_id,semester_id,amount,paid_at,ai_reviewed_at', '&order=paid_at.desc'),
     query<Fee>('fee_structure', 'class_id,semester_id,required_amount'),
   ]);
@@ -233,6 +235,31 @@ const analyzeRisks = (data: SchoolData, current: Semester) => {
   });
 };
 
+const getLowPaymentStudents = (data: SchoolData, current: Semester) =>
+  data.students
+    .filter(student => student.status === 'active')
+    .map(student => {
+      const amountRequired = getFee(data, student.class_id, current.id);
+      const amountPaid = totalPaid(getStudentPayments(data, student.id, current.id));
+      return {
+        studentId: student.id,
+        studentName: student.full_name,
+        admissionNumber: student.admission_number,
+        classId: student.class_id,
+        className: data.classes.find(item => item.id === student.class_id)?.name ?? 'Unknown class',
+        amountPaid,
+        amountRequired,
+        amountRemaining: Math.max(0, amountRequired - amountPaid),
+        percentagePaid: amountRequired > 0 ? (amountPaid / amountRequired) * 100 : 100,
+      };
+    })
+    .filter(student =>
+      student.amountPaid > 0
+      && student.amountPaid <= LOW_PAYMENT_LIMIT
+      && student.amountPaid < student.amountRequired,
+    )
+    .sort((a, b) => a.amountPaid - b.amountPaid || a.studentName.localeCompare(b.studentName));
+
 const findPaymentIssues = (data: SchoolData): PaymentIssue[] => {
   const studentById = new Map(data.students.map(student => [student.id, student]));
   const classById = new Map(data.classes.map(schoolClass => [schoolClass.id, schoolClass]));
@@ -322,6 +349,8 @@ const getOverview = (data: SchoolData, current: Semester, language: Language) =>
     highestClass: byCollection[0]?.name ?? null,
     lowestClass: byCollection.at(-1)?.name ?? null,
     risks: analyzeRisks(data, current),
+    lowPaymentLimit: LOW_PAYMENT_LIMIT,
+    lowPaymentStudents: getLowPaymentStudents(data, current),
     prediction,
     issues: findPaymentIssues(data),
     language,

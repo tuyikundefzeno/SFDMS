@@ -79,9 +79,13 @@ Vercel; add it to the Vercel project's Environment Variables and redeploy.
    3?”, and “How much did we collect this week?” The answers/table should match database records.
    Try an unsupported question and confirm it returns “I do not have this
    information.”
-5. **Semester prediction:** Compare the collected and estimated bars. Confirm
+5. **Low-payment follow-up:** Review the list of active students with recorded
+   current-semester payments above RWF 0 and up to RWF 5,000. Confirm fees and
+   balances match the payment records, filter by class, and download the
+   follow-up PDF for printing.
+6. **Semester prediction:** Compare the collected and estimated bars. Confirm
    the page labels the prediction as an estimate and gives its basis.
-6. **Mistake checker:** Add test records that may be duplicated or put a
+7. **Mistake checker:** Add test records that may be duplicated or put a
    student's semester total over the fee. Check that they are flagged, then
    press **Mark as checked**. The page marks them for review but does not edit
    or delete payment values.

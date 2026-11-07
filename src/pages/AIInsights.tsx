@@ -5,10 +5,13 @@ import {
   Check,
   CheckCircle2,
   Clipboard,
+  FileDown,
   RefreshCw,
   Send,
   Sparkles,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { formatCurrency } from '../lib/constants';
 import { supabase } from '../lib/supabase';
 
@@ -35,6 +38,18 @@ interface PaymentIssue {
   checked: boolean;
 }
 
+interface LowPaymentStudent {
+  studentId: string;
+  studentName: string;
+  admissionNumber: string;
+  classId: string;
+  className: string;
+  amountPaid: number;
+  amountRequired: number;
+  amountRemaining: number;
+  percentagePaid: number;
+}
+
 interface InsightOverview {
   semester: { id: string; name: string; start_date: string; end_date: string };
   collected: number;
@@ -45,6 +60,8 @@ interface InsightOverview {
   highestClass: string | null;
   lowestClass: string | null;
   risks: RiskStudent[];
+  lowPaymentLimit: number;
+  lowPaymentStudents: LowPaymentStudent[];
   prediction: {
     collected: number;
     predicted: number;
@@ -112,6 +129,7 @@ export const AIInsights = () => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [pageError, setPageError] = useState('');
   const [selectedClass, setSelectedClass] = useState('all');
+  const [selectedLowPaymentClass, setSelectedLowPaymentClass] = useState('all');
   const [selectedRisk, setSelectedRisk] = useState('all');
   const [reminderTone, setReminderTone] = useState<'Friendly' | 'Formal'>('Friendly');
   const [deadline, setDeadline] = useState('');
@@ -152,6 +170,120 @@ export const AIInsights = () => {
       (selectedClass === 'all' || student.classId === selectedClass)
       && (selectedRisk === 'all' || student.risk === selectedRisk),
     ), [overview?.risks, selectedClass, selectedRisk]);
+
+  const lowPaymentStudents = useMemo(() =>
+    (overview?.lowPaymentStudents ?? []).filter(student =>
+      selectedLowPaymentClass === 'all' || student.classId === selectedLowPaymentClass,
+    ), [overview?.lowPaymentStudents, selectedLowPaymentClass]);
+
+  const exportLowPaymentPdf = () => {
+    if (!overview || lowPaymentStudents.length === 0) return;
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const generatedDate = new Date().toLocaleDateString('en-RW', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+    const className = selectedLowPaymentClass === 'all'
+      ? 'All classes'
+      : overview.classes.find(item => item.id === selectedLowPaymentClass)?.name ?? 'Selected class';
+    const totalPaid = lowPaymentStudents.reduce((total, student) => total + student.amountPaid, 0);
+    const totalRemaining = lowPaymentStudents.reduce((total, student) => total + student.amountRemaining, 0);
+
+    doc.setProperties({
+      title: `Low Payment Follow-Up - ${overview.semester.name}`,
+      subject: 'Student contribution follow-up list',
+      creator: 'School Feeding Management System',
+    });
+    doc.setFillColor(6, 78, 59);
+    doc.rect(0, 0, pageWidth, 34, 'F');
+    doc.setFillColor(16, 185, 129);
+    doc.rect(0, 34, pageWidth, 2, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.text('Student Contribution Follow-Up', 14, 14);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text('Supportive parent/guardian meeting list', 14, 23);
+    doc.setFontSize(9);
+    doc.text(`Generated ${generatedDate}`, pageWidth - 14, 23, { align: 'right' });
+
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.text(`Semester: ${overview.semester.name}`, 14, 47);
+    doc.text(`Class: ${className}`, pageWidth / 2, 47);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text(
+      `Students with a payment above RWF 0 and up to RWF ${overview.lowPaymentLimit.toLocaleString()} of their semester fee.`,
+      14,
+      54,
+    );
+    doc.text(
+      'Please confirm records and invite a parent/guardian to discuss contribution support.',
+      14,
+      60,
+    );
+
+    autoTable(doc, {
+      startY: 68,
+      head: [['#', 'Student name', 'Admission no.', 'Class', 'Paid', 'Semester fee', 'Balance', 'Paid %']],
+      body: lowPaymentStudents.map((student, index) => [
+        String(index + 1),
+        student.studentName,
+        student.admissionNumber,
+        student.className,
+        formatCurrency(student.amountPaid),
+        formatCurrency(student.amountRequired),
+        formatCurrency(student.amountRemaining),
+        `${student.percentagePaid.toFixed(1)}%`,
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [6, 78, 59], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+      foot: [[
+        '',
+        '',
+        '',
+        `Totals (${lowPaymentStudents.length})`,
+        formatCurrency(totalPaid),
+        '',
+        formatCurrency(totalRemaining),
+        '',
+      ]],
+      showFoot: 'lastPage',
+      footStyles: { fillColor: [236, 253, 245], textColor: [6, 78, 59], fontStyle: 'bold', fontSize: 9 },
+      alternateRowStyles: { fillColor: [240, 253, 250] },
+      bodyStyles: { textColor: [51, 65, 85], fontSize: 8.5, cellPadding: 3.2 },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 10 },
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+        6: { halign: 'right', fontStyle: 'bold', textColor: [185, 28, 28] },
+        7: { halign: 'right' },
+      },
+      margin: { left: 14, right: 14 },
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let page = 1; page <= pageCount; page += 1) {
+      doc.setPage(page);
+      doc.setDrawColor(226, 232, 240);
+      doc.line(14, pageHeight - 12, pageWidth - 14, pageHeight - 12);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(100, 116, 139);
+      doc.text('School Feeding Management System | Verify payment records before follow-up', 14, pageHeight - 7);
+      doc.text(`Page ${page} of ${pageCount}`, pageWidth - 14, pageHeight - 7, { align: 'right' });
+    }
+
+    doc.save(`low-payment-follow-up-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
 
   const writeReminder = async (student: RiskStudent) => {
     setReminderStudentId(student.studentId);
@@ -319,6 +451,102 @@ export const AIInsights = () => {
                 </div>
               ))}
             </div>
+          </section>
+
+          <section aria-labelledby="low-payment-title" className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm">
+            <div className="border-b border-emerald-100 bg-gradient-to-r from-emerald-50 via-white to-amber-50 p-5 sm:p-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-semibold text-emerald-800 shadow-sm">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    Payment follow-up
+                  </div>
+                  <h2 id="low-payment-title" className="text-lg font-bold text-slate-900">
+                    Parent/guardian follow-up list
+                  </h2>
+                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+                    Students who have paid more than RWF 0 and no more than {formatCurrency(overview.lowPaymentLimit)}
+                    {' '}toward their current-semester fee, based on recorded payments.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <label className="text-xs font-medium text-slate-500">
+                    Filter by class
+                    <select
+                      value={selectedLowPaymentClass}
+                      onChange={event => setSelectedLowPaymentClass(event.target.value)}
+                      className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                    >
+                      <option value="all">All classes</option>
+                      {overview.classes.map(schoolClass => (
+                        <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={exportLowPaymentPdf}
+                    disabled={lowPaymentStudents.length === 0}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-800 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <FileDown className="h-4 w-4" />
+                    Download / print PDF
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {lowPaymentStudents.length === 0 ? (
+              <div className="p-8 text-center">
+                <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-600" />
+                <p className="mt-2 text-sm font-semibold text-slate-800">No students match this payment range.</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Students with no recorded payments are shown in the early-warning list instead.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-4 text-sm">
+                  <span className="font-semibold text-slate-800">
+                    {lowPaymentStudents.length} student{lowPaymentStudents.length === 1 ? '' : 's'} to follow up
+                  </span>
+                  <span className="text-xs text-slate-500">
+                    {overview.semester.name} · verify records before contacting families
+                  </span>
+                </div>
+                <div className="overflow-x-auto p-5 pt-3">
+                  <table className="w-full min-w-[760px] text-left text-sm">
+                    <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-3 font-semibold">Student</th>
+                        <th className="px-3 py-3 font-semibold">Admission no.</th>
+                        <th className="px-3 py-3 font-semibold">Class</th>
+                        <th className="px-3 py-3 text-right font-semibold">Paid</th>
+                        <th className="px-3 py-3 text-right font-semibold">Fee</th>
+                        <th className="px-3 py-3 text-right font-semibold">Balance</th>
+                        <th className="px-3 py-3 text-right font-semibold">Progress</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {lowPaymentStudents.map(student => (
+                        <tr key={student.studentId} className="transition hover:bg-emerald-50/50">
+                          <td className="px-3 py-3 font-semibold text-slate-800">{student.studentName}</td>
+                          <td className="px-3 py-3 text-slate-600">{student.admissionNumber}</td>
+                          <td className="px-3 py-3 text-slate-600">{student.className}</td>
+                          <td className="px-3 py-3 text-right tabular-nums font-semibold text-amber-700">{formatCurrency(student.amountPaid)}</td>
+                          <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatCurrency(student.amountRequired)}</td>
+                          <td className="px-3 py-3 text-right tabular-nums font-semibold text-red-700">{formatCurrency(student.amountRemaining)}</td>
+                          <td className="px-3 py-3 text-right tabular-nums text-slate-600">{student.percentagePaid.toFixed(1)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-xs leading-5 text-slate-500">
+                  This is a payment-record follow-up aid, not a disciplinary list. Please confirm each record and speak with families respectfully.
+                </p>
+              </>
+            )}
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
