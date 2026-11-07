@@ -2,11 +2,8 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
-type UserRole = 'admin' | 'accountant';
-
 interface AuthContextValue {
   user: User | null;
-  role: UserRole | null;
   loading: boolean;
   authError: string | null;
   signOut: () => Promise<void>;
@@ -16,7 +13,6 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -27,9 +23,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       authEventReceived = true;
       const nextUser = session?.user ?? null;
       setUser(nextUser);
-      setRole(null);
       setAuthError(null);
-      if (!nextUser) setLoading(false);
+      setLoading(false);
     });
 
     void supabase.auth.getSession().then(({ data, error }) => {
@@ -40,7 +35,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
       setUser(data.session?.user ?? null);
-      if (!data.session?.user) setLoading(false);
+      setLoading(false);
     }).catch((error: unknown) => {
       if (!active || authEventReceived) return;
       setAuthError(`Unable to restore your session: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -53,45 +48,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, []);
 
-  const userId = user?.id;
-
-  useEffect(() => {
-    let active = true;
-
-    if (!userId) {
-      setRole(null);
-      return () => { active = false; };
-    }
-
-    setRole(null);
-    setAuthError(null);
-    setLoading(true);
-    void Promise.resolve(supabase.rpc('get_user_role')).then(({ data, error }) => {
-      if (!active) return;
-      if (error) {
-        setAuthError(`Unable to verify your account role: ${error.message}`);
-      } else if (data === 'admin' || data === 'accountant') {
-        setRole(data);
-      } else {
-        setAuthError('Your account has no assigned role. Contact an administrator.');
-      }
-      setLoading(false);
-    }).catch((error: unknown) => {
-      if (!active) return;
-      setAuthError(`Unable to verify your account role: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setLoading(false);
-    });
-
-    return () => { active = false; };
-  }, [userId]);
-
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
 
   return (
-    <AuthContext.Provider value={{ user, role, loading, authError, signOut }}>
+    <AuthContext.Provider value={{ user, loading, authError, signOut }}>
       {children}
     </AuthContext.Provider>
   );

@@ -126,7 +126,7 @@ export const AdminDashboard = () => {
     <div className="space-y-8">
       {/* Nav Cards */}
       <div>
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">Admin Dashboard</h2>
+        <h2 className="text-2xl font-bold text-slate-800 mb-4">School Feeding Dashboard</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {navCards.map((card) => (
             <Link key={card.path} to={card.path}

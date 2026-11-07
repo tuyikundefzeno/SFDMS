@@ -26,18 +26,13 @@ variable.
    routes works.
 4. Apply `supabase_schema.sql` to the connected Supabase project. In Supabase
    Auth settings, enable email sign-ups and configure the site URL and redirect
-   URLs for your deployment. New sign-ups automatically receive the accountant
-   role through a database trigger; the role is never accepted from client
-   metadata. Create administrators through a trusted admin workflow. Each
-   account needs a matching row in `public.users`; the application denies
-   dashboard access if the role is missing.
+   URLs for your deployment. No application roles are used: every signed-in
+   account can view and manage all application data and pages. New accounts
+   receive a profile automatically when they sign up. Payment entries must be
+   attributed to the signed-in user when created.
 
-Example administrator provisioning (replace the values in the SQL Editor):
-
-```sql
-INSERT INTO public.users (id, full_name, role)
-VALUES ('<auth-user-uuid>', '<full-name>', 'admin');
-```
+Keep public sign-ups enabled only if anyone should be able to create an account
+and receive full access.
 
 The `.env` file is for local development and is excluded from Git. Configure
 Vercel environment variables separately; local values are not uploaded or

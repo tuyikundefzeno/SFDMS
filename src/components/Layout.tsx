@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { LogOut, LayoutDashboard, FileBarChart, Users, BookOpen, CreditCard, CalendarDays } from 'lucide-react';
 
 export const Layout = () => {
-  const { user, role, signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -12,15 +12,14 @@ export const Layout = () => {
     navigate('/login');
   };
 
-  const navItems = role === 'admin' ? [
+  const navItems = [
     { name: 'Dashboard', path: '/admin', icon: LayoutDashboard },
+    { name: 'Record Payment', path: '/accountant', icon: CreditCard },
     { name: 'Payments', path: '/admin/payments', icon: CreditCard },
     { name: 'Live Report', path: '/admin/reports', icon: FileBarChart },
     { name: 'Students', path: '/admin/students', icon: Users },
     { name: 'Classes', path: '/admin/classes', icon: BookOpen },
     { name: 'Semesters', path: '/admin/semesters', icon: CalendarDays },
-  ] : [
-    { name: 'Record Payment', path: '/accountant', icon: CreditCard },
   ];
 
   if (!user) return <Outlet />;
@@ -31,7 +30,7 @@ export const Layout = () => {
       <aside className="w-64 bg-primary-900 text-white flex flex-col shadow-xl">
         <div className="p-6">
           <h1 className="text-xl font-bold leading-tight">School Feeding</h1>
-          <p className="text-primary-300 text-sm mt-1 capitalize">{role} Portal</p>
+          <p className="text-primary-300 text-sm mt-1">Full access</p>
         </div>
         <nav className="flex-1 px-4 space-y-1 mt-2">
           {navItems.map((item) => (

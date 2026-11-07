@@ -4,20 +4,20 @@
 access. This repository does not contain a separate application server or API
 routes.
 
-## Finding
+## Finding and status
 
 | # | Severity | Location | Vulnerability | Confidence |
 |---|----------|----------|---------------|------------|
-| 1 | MEDIUM | [`supabase_schema.sql`](./supabase_schema.sql), lines 234–236 | The accountant payment-insert policy verifies the caller's role but does not require `payments.recorded_by` to equal the authenticated user's ID. An authenticated accountant can call Supabase directly and attribute a payment to another user, weakening the payment audit trail. | 9/10 |
+| 1 | MEDIUM | [`supabase_schema.sql`](./supabase_schema.sql) | **Resolved:** payment inserts require `recorded_by` to match the authenticated user's ID. All authenticated users can now manage all records by design; there are no application roles. | 9/10 |
 
-### Recommended remediation
+## Access model
 
-Require `recorded_by = (SELECT auth.uid())` in the accountant insert policy's
-`WITH CHECK` condition. Apply the same invariant in a database constraint or
-trigger if it must remain enforced independently of policy changes.
+Any signed-in user can read, insert, update, and delete application data. This
+is full access, not an admin/accountant separation. Payment inserts are
+attributed to the submitting user, but authenticated users can still update or
+delete payment records.
 
 ## Verification notes
 
-This review was static; no live Supabase project was accessed. The finding is
-based on the checked-in schema and should be addressed in the database before
-relying on the payment recorder as an audit trail.
+This review is static; no live Supabase project was accessed. Apply the updated
+schema in the Supabase SQL Editor for these policies to take effect.

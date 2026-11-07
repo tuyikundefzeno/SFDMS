@@ -12,14 +12,14 @@ export const Login = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { user, role, loading, authError } = useAuth();
+  const { user, loading, authError } = useAuth();
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50">Loading...</div>;
   }
 
-  if (user && role) {
-    return <Navigate to={role === 'admin' ? '/admin' : '/accountant'} replace />;
+  if (user) {
+    return <Navigate to="/admin" replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -42,7 +42,7 @@ export const Login = () => {
           setPassword('');
           setNotice('Account created. Check your email to confirm your address, then sign in.');
         } else {
-          setNotice('Account created. Your accountant account is ready.');
+          setNotice('Account created. You now have full access to the system.');
         }
       } else {
         const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -70,13 +70,8 @@ export const Login = () => {
           School Feeding Management
         </h2>
         <p className="mt-2 text-center text-sm text-slate-600">
-          {isSigningUp ? 'Create an account to access the accountant portal' : 'Sign in to access your dashboard'}
+          {isSigningUp ? 'Create an account for full access to the system' : 'Sign in to access your dashboard'}
         </p>
-        {user && !role && (
-          <p role="alert" className="mt-4 text-sm text-red-700">
-            {authError ?? 'Your account does not have an assigned role. Contact an administrator.'}
-          </p>
-        )}
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
@@ -155,7 +150,7 @@ export const Login = () => {
               >
                 {isLoading
                   ? (isSigningUp ? 'Creating account...' : 'Signing in...')
-                  : (isSigningUp ? 'Create accountant account' : 'Sign in')}
+                  : (isSigningUp ? 'Create account' : 'Sign in')}
               </button>
             </div>
             <p className="text-center text-sm text-slate-600">

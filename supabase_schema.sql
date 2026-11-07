@@ -55,9 +55,10 @@ CREATE TABLE IF NOT EXISTS public.fee_structure (
 CREATE TABLE IF NOT EXISTS public.users (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name TEXT NOT NULL,
-    role TEXT NOT NULL CHECK (role IN ('admin', 'accountant')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.users DROP COLUMN IF EXISTS role;
 
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS TRIGGER
@@ -66,15 +67,14 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-    INSERT INTO public.users (id, full_name, role)
+    INSERT INTO public.users (id, full_name)
     VALUES (
         NEW.id,
         COALESCE(
             NULLIF(BTRIM(NEW.raw_user_meta_data ->> 'full_name'), ''),
             NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''),
             NEW.id::TEXT
-        ),
-        'accountant'
+        )
     )
     ON CONFLICT (id) DO NOTHING;
     RETURN NEW;
@@ -86,6 +86,17 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
+INSERT INTO public.users (id, full_name)
+SELECT
+    u.id,
+    COALESCE(
+        NULLIF(BTRIM(u.raw_user_meta_data ->> 'full_name'), ''),
+        NULLIF(split_part(COALESCE(u.email, ''), '@', 1), ''),
+        u.id::TEXT
+    )
+FROM auth.users AS u
+ON CONFLICT (id) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -141,21 +152,6 @@ GROUP BY s.id, c.id, sem.id, fs.required_amount;
 GRANT SELECT ON public.student_semester_totals TO authenticated;
 REVOKE ALL ON public.student_semester_totals FROM anon;
 
-CREATE OR REPLACE FUNCTION public.get_user_role()
-RETURNS TEXT
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT u.role
-    FROM public.users AS u
-    WHERE u.id = (SELECT auth.uid());
-$$;
-
-REVOKE ALL ON FUNCTION public.get_user_role() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.get_user_role() TO authenticated;
-
 GRANT SELECT, INSERT, UPDATE, DELETE
     ON public.schools, public.classes, public.semesters, public.students,
        public.fee_structure, public.users, public.payments
@@ -173,95 +169,53 @@ ALTER TABLE public.fee_structure ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Authenticated users read schools" ON public.schools;
-DROP POLICY IF EXISTS "Admins manage schools" ON public.schools;
-DROP POLICY IF EXISTS "Allow all authenticated to read schools" ON public.schools;
-DROP POLICY IF EXISTS "Allow admin full access to schools" ON public.schools;
-CREATE POLICY "Authenticated users read schools" ON public.schools
-    FOR SELECT TO authenticated
-    USING ((SELECT public.get_user_role()) IN ('admin', 'accountant'));
-CREATE POLICY "Admins manage schools" ON public.schools
-    FOR ALL TO authenticated
-    USING ((SELECT public.get_user_role()) = 'admin')
-    WITH CHECK ((SELECT public.get_user_role()) = 'admin');
+DO $$
+DECLARE
+    policy_record RECORD;
+BEGIN
+    FOR policy_record IN
+        SELECT schemaname, tablename, policyname
+        FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = ANY (ARRAY[
+              'schools', 'classes', 'semesters', 'students',
+              'fee_structure', 'users', 'payments'
+          ])
+    LOOP
+        EXECUTE format(
+            'DROP POLICY %I ON %I.%I',
+            policy_record.policyname,
+            policy_record.schemaname,
+            policy_record.tablename
+        );
+    END LOOP;
+END;
+$$;
 
-DROP POLICY IF EXISTS "Authenticated users read classes" ON public.classes;
-DROP POLICY IF EXISTS "Admins manage classes" ON public.classes;
-DROP POLICY IF EXISTS "Allow all authenticated to read classes" ON public.classes;
-DROP POLICY IF EXISTS "Allow admin full access to classes" ON public.classes;
-CREATE POLICY "Authenticated users read classes" ON public.classes
-    FOR SELECT TO authenticated
-    USING ((SELECT public.get_user_role()) IN ('admin', 'accountant'));
-CREATE POLICY "Admins manage classes" ON public.classes
-    FOR ALL TO authenticated
-    USING ((SELECT public.get_user_role()) = 'admin')
-    WITH CHECK ((SELECT public.get_user_role()) = 'admin');
+DROP FUNCTION IF EXISTS public.get_user_role();
 
-DROP POLICY IF EXISTS "Authenticated users read semesters" ON public.semesters;
-DROP POLICY IF EXISTS "Admins manage semesters" ON public.semesters;
-DROP POLICY IF EXISTS "Allow all authenticated to read semesters" ON public.semesters;
-DROP POLICY IF EXISTS "Allow admin full access to semesters" ON public.semesters;
-CREATE POLICY "Authenticated users read semesters" ON public.semesters
-    FOR SELECT TO authenticated
-    USING ((SELECT public.get_user_role()) IN ('admin', 'accountant'));
-CREATE POLICY "Admins manage semesters" ON public.semesters
-    FOR ALL TO authenticated
-    USING ((SELECT public.get_user_role()) = 'admin')
-    WITH CHECK ((SELECT public.get_user_role()) = 'admin');
-
-DROP POLICY IF EXISTS "Authenticated users read students" ON public.students;
-DROP POLICY IF EXISTS "Admins manage students" ON public.students;
-DROP POLICY IF EXISTS "Allow all authenticated to read students" ON public.students;
-DROP POLICY IF EXISTS "Allow admin full access to students" ON public.students;
-CREATE POLICY "Authenticated users read students" ON public.students
-    FOR SELECT TO authenticated
-    USING ((SELECT public.get_user_role()) IN ('admin', 'accountant'));
-CREATE POLICY "Admins manage students" ON public.students
-    FOR ALL TO authenticated
-    USING ((SELECT public.get_user_role()) = 'admin')
-    WITH CHECK ((SELECT public.get_user_role()) = 'admin');
-
-DROP POLICY IF EXISTS "Authenticated users read fee structure" ON public.fee_structure;
-DROP POLICY IF EXISTS "Admins manage fee structure" ON public.fee_structure;
-DROP POLICY IF EXISTS "Allow all authenticated to read fee_structure" ON public.fee_structure;
-DROP POLICY IF EXISTS "Allow admin full access to fee_structure" ON public.fee_structure;
-CREATE POLICY "Authenticated users read fee structure" ON public.fee_structure
-    FOR SELECT TO authenticated
-    USING ((SELECT public.get_user_role()) IN ('admin', 'accountant'));
-CREATE POLICY "Admins manage fee structure" ON public.fee_structure
-    FOR ALL TO authenticated
-    USING ((SELECT public.get_user_role()) = 'admin')
-    WITH CHECK ((SELECT public.get_user_role()) = 'admin');
-
-DROP POLICY IF EXISTS "Users read own profile or admins read all" ON public.users;
-DROP POLICY IF EXISTS "Admins manage user profiles" ON public.users;
-DROP POLICY IF EXISTS "Allow all authenticated to read users" ON public.users;
-DROP POLICY IF EXISTS "Allow admin full access to users" ON public.users;
-CREATE POLICY "Users read own profile or admins read all" ON public.users
-    FOR SELECT TO authenticated
-    USING (id = (SELECT auth.uid())
-        OR (SELECT public.get_user_role()) = 'admin');
-CREATE POLICY "Admins manage user profiles" ON public.users
-    FOR ALL TO authenticated
-    USING ((SELECT public.get_user_role()) = 'admin')
-    WITH CHECK ((SELECT public.get_user_role()) = 'admin');
-
-DROP POLICY IF EXISTS "Authenticated users read payments" ON public.payments;
-DROP POLICY IF EXISTS "Admins manage payments" ON public.payments;
-DROP POLICY IF EXISTS "Accountants record payments" ON public.payments;
-DROP POLICY IF EXISTS "Allow all authenticated to read payments" ON public.payments;
-DROP POLICY IF EXISTS "Allow admin full access to payments" ON public.payments;
-DROP POLICY IF EXISTS "Allow accountant to insert payments" ON public.payments;
+CREATE POLICY "Authenticated users manage schools" ON public.schools
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users manage classes" ON public.classes
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users manage semesters" ON public.semesters
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users manage students" ON public.students
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users manage fee structure" ON public.fee_structure
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users read profiles" ON public.users
+    FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Users manage own profile" ON public.users
+    FOR UPDATE TO authenticated
+    USING (id = (SELECT auth.uid()))
+    WITH CHECK (id = (SELECT auth.uid()));
 CREATE POLICY "Authenticated users read payments" ON public.payments
-    FOR SELECT TO authenticated
-    USING ((SELECT public.get_user_role()) IN ('admin', 'accountant'));
-CREATE POLICY "Admins manage payments" ON public.payments
-    FOR ALL TO authenticated
-    USING ((SELECT public.get_user_role()) = 'admin')
-    WITH CHECK ((SELECT public.get_user_role()) = 'admin');
-CREATE POLICY "Accountants record payments" ON public.payments
+    FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Authenticated users record payments" ON public.payments
     FOR INSERT TO authenticated
-    WITH CHECK (
-        (SELECT public.get_user_role()) = 'accountant'
-        AND recorded_by = (SELECT auth.uid())
-    );
+    WITH CHECK (recorded_by = (SELECT auth.uid()));
+CREATE POLICY "Authenticated users update payments" ON public.payments
+    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "Authenticated users delete payments" ON public.payments
+    FOR DELETE TO authenticated USING (true);
