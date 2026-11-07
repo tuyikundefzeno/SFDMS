@@ -176,6 +176,119 @@ export const AIInsights = () => {
       selectedLowPaymentClass === 'all' || student.classId === selectedLowPaymentClass,
     ), [overview?.lowPaymentStudents, selectedLowPaymentClass]);
 
+  const exportStudentFollowUpPdf = (student: LowPaymentStudent) => {
+    if (!overview) return;
+
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const generatedDate = new Date().toLocaleDateString('en-RW', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    });
+
+    doc.setProperties({
+      title: `Contribution Follow-Up - ${student.studentName}`,
+      subject: 'Individual student contribution follow-up',
+      creator: 'School Feeding Management System',
+    });
+    doc.setFillColor(6, 78, 59);
+    doc.rect(0, 0, pageWidth, 48, 'F');
+    doc.setFillColor(16, 185, 129);
+    doc.rect(0, 48, pageWidth, 2, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(19);
+    doc.text('Student Contribution Follow-Up', 18, 20);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(11);
+    doc.text('Parent / guardian meeting record', 18, 30);
+    doc.setFontSize(9);
+    doc.text(`Generated ${generatedDate}`, 18, 39);
+
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(15);
+    doc.text(student.studentName, 18, 69);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`Admission number: ${student.admissionNumber}`, 18, 78);
+    doc.text(`Class: ${student.className}`, 18, 85);
+    doc.text(`Semester: ${overview.semester.name}`, 18, 92);
+
+    doc.setFillColor(240, 253, 250);
+    doc.roundedRect(18, 104, pageWidth - 36, 57, 4, 4, 'F');
+    doc.setTextColor(6, 78, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('SEMESTER CONTRIBUTION SUMMARY', 26, 116);
+
+    doc.setDrawColor(204, 251, 241);
+    doc.line(26, 122, pageWidth - 26, 122);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    doc.text('Contribution recorded', 26, 134);
+    doc.text('Semester fee', 91, 134);
+    doc.text('Balance remaining', 153, 134);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(180, 83, 9);
+    doc.text(formatCurrency(student.amountPaid), 26, 145);
+    doc.setTextColor(30, 41, 59);
+    doc.text(formatCurrency(student.amountRequired), 91, 145);
+    doc.setTextColor(185, 28, 28);
+    doc.text(formatCurrency(student.amountRemaining), 153, 145);
+
+    doc.setTextColor(30, 41, 59);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('Meeting request', 18, 181);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(71, 85, 105);
+    const message = doc.splitTextToSize(
+      'Please visit the school with your parent or guardian to review this semester’s school-feeding contribution and discuss any questions about the recorded balance.',
+      pageWidth - 36,
+    );
+    doc.text(message, 18, 190, { lineHeightFactor: 1.6 });
+
+    doc.setFillColor(255, 251, 235);
+    doc.roundedRect(18, 215, pageWidth - 36, 21, 3, 3, 'F');
+    doc.setTextColor(120, 53, 15);
+    doc.setFontSize(9);
+    doc.text(
+      'This notice is based on recorded payments. Please contact the school if a payment is missing or incorrect.',
+      24,
+      228,
+    );
+
+    const signatureY = Math.min(258, pageHeight - 33);
+    doc.setDrawColor(148, 163, 184);
+    doc.line(18, signatureY, 88, signatureY);
+    doc.line(119, signatureY, pageWidth - 18, signatureY);
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(8);
+    doc.text('Parent / guardian signature and date', 18, signatureY + 6);
+    doc.text('School representative and date', 119, signatureY + 6);
+
+    doc.setDrawColor(226, 232, 240);
+    doc.line(18, pageHeight - 17, pageWidth - 18, pageHeight - 17);
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(8);
+    doc.text('School Feeding Management System | Please handle student information confidentially', 18, pageHeight - 11);
+
+    const safeName = student.studentName
+      .normalize('NFKD')
+      .replace(/[^\w -]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase() || student.studentId;
+    doc.save(`contribution-follow-up-${safeName}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   const exportLowPaymentPdf = () => {
     if (!overview || lowPaymentStudents.length === 0) return;
 
@@ -515,7 +628,7 @@ export const AIInsights = () => {
                   </span>
                 </div>
                 <div className="overflow-x-auto p-5 pt-3">
-                  <table className="w-full min-w-[760px] text-left text-sm">
+                  <table className="w-full min-w-[850px] text-left text-sm">
                     <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                       <tr>
                         <th className="px-3 py-3 font-semibold">Student</th>
@@ -525,6 +638,7 @@ export const AIInsights = () => {
                         <th className="px-3 py-3 text-right font-semibold">Fee</th>
                         <th className="px-3 py-3 text-right font-semibold">Balance</th>
                         <th className="px-3 py-3 text-right font-semibold">Progress</th>
+                        <th className="px-3 py-3 text-right font-semibold">Individual PDF</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -537,6 +651,17 @@ export const AIInsights = () => {
                           <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatCurrency(student.amountRequired)}</td>
                           <td className="px-3 py-3 text-right tabular-nums font-semibold text-red-700">{formatCurrency(student.amountRemaining)}</td>
                           <td className="px-3 py-3 text-right tabular-nums text-slate-600">{student.percentagePaid.toFixed(1)}%</td>
+                          <td className="px-3 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => exportStudentFollowUpPdf(student)}
+                              aria-label={`Download individual follow-up PDF for ${student.studentName}`}
+                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+                            >
+                              <FileDown className="h-3.5 w-3.5" />
+                              Student PDF
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

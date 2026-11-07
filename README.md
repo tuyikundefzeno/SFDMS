@@ -82,7 +82,8 @@ Vercel; add it to the Vercel project's Environment Variables and redeploy.
 5. **Low-payment follow-up:** Review the list of active students with recorded
    current-semester payments above RWF 0 and up to RWF 5,000. Confirm fees and
    balances match the payment records, filter by class, and download the
-   follow-up PDF for printing.
+   follow-up PDF for printing. Use **Student PDF** on a row to download an
+   individual parent/guardian follow-up notice for that student.
 6. **Semester prediction:** Compare the collected and estimated bars. Confirm
    the page labels the prediction as an estimate and gives its basis.
 7. **Mistake checker:** Add test records that may be duplicated or put a
