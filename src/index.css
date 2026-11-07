@@ -18,3 +18,23 @@
     @apply bg-white text-slate-800 antialiased;
   }
 }
+
+@keyframes landing-image-drift {
+  from {
+    transform: scale(1.02);
+  }
+
+  to {
+    transform: scale(1.12);
+  }
+}
+
+.landing-hero-image {
+  animation: landing-image-drift 24s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-hero-image {
+    animation: none;
+  }
+}

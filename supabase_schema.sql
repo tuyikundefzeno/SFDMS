@@ -58,8 +58,6 @@ CREATE TABLE IF NOT EXISTS public.users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-ALTER TABLE public.users DROP COLUMN IF EXISTS role;
-
 CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -105,8 +103,12 @@ CREATE TABLE IF NOT EXISTS public.payments (
     amount NUMERIC(10, 2) NOT NULL CHECK (amount > 0),
     paid_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     recorded_by UUID NOT NULL REFERENCES public.users(id),
-    note TEXT
+    note TEXT,
+    ai_reviewed_at TIMESTAMPTZ
 );
+
+ALTER TABLE public.payments
+    ADD COLUMN IF NOT EXISTS ai_reviewed_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS students_class_id_idx
     ON public.students (class_id);
@@ -193,6 +195,7 @@ END;
 $$;
 
 DROP FUNCTION IF EXISTS public.get_user_role();
+ALTER TABLE public.users DROP COLUMN IF EXISTS role;
 
 CREATE POLICY "Authenticated users manage schools" ON public.schools
     FOR ALL TO authenticated USING (true) WITH CHECK (true);

@@ -1,0 +1,543 @@
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  AlertCircle,
+  Bot,
+  Check,
+  CheckCircle2,
+  Clipboard,
+  RefreshCw,
+  Send,
+  Sparkles,
+} from 'lucide-react';
+import { formatCurrency } from '../lib/constants';
+import { supabase } from '../lib/supabase';
+
+type Language = 'English' | 'Kinyarwanda' | 'French';
+type RiskLevel = 'Low' | 'Medium' | 'High';
+
+interface RiskStudent {
+  studentId: string;
+  studentName: string;
+  classId: string;
+  className: string;
+  amountPaid: number;
+  amountRemaining: number;
+  risk: RiskLevel;
+}
+
+interface PaymentIssue {
+  id: string;
+  studentName: string;
+  className: string;
+  amount: number;
+  paidAt: string | null;
+  reason: string;
+  checked: boolean;
+}
+
+interface InsightOverview {
+  semester: { id: string; name: string; start_date: string; end_date: string };
+  collected: number;
+  expected: number;
+  unpaid: number;
+  percentageCollected: number;
+  classes: { id: string; name: string; collected: number; expected: number }[];
+  highestClass: string | null;
+  lowestClass: string | null;
+  risks: RiskStudent[];
+  prediction: {
+    collected: number;
+    predicted: number;
+    expected: number;
+    explanation: string;
+    historicalSemesters: number;
+  };
+  issues: PaymentIssue[];
+  summary: string | null;
+  empty?: boolean;
+  error?: string;
+}
+
+interface ChatReply {
+  answer: string;
+  rows: { student: string; class: string; amountPaid: number; amountRemaining: number }[];
+}
+
+const languages: Language[] = ['English', 'Kinyarwanda', 'French'];
+const riskColor: Record<RiskLevel, string> = {
+  Low: 'bg-emerald-100 text-emerald-800',
+  Medium: 'bg-amber-100 text-amber-800',
+  High: 'bg-red-100 text-red-800',
+};
+
+const getApiError = async (response: Response) => {
+  const result = await response.json().catch(() => null) as { error?: string } | null;
+  return result?.error ?? 'AI is not available now, please try again.';
+};
+
+const callAi = async <T,>(payload: Record<string, unknown>): Promise<T> => {
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw new Error(sessionError.message);
+  if (!session?.access_token) throw new Error('Please sign in again to use AI Insights.');
+
+  const response = await fetch('/api/ai', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(await getApiError(response));
+  return response.json() as Promise<T>;
+};
+
+const SummarySkeleton = () => (
+  <div className="space-y-3 animate-pulse" aria-label="Loading summary">
+    <div className="h-4 w-full rounded bg-slate-200" />
+    <div className="h-4 w-11/12 rounded bg-slate-200" />
+    <div className="h-4 w-4/5 rounded bg-slate-200" />
+  </div>
+);
+
+export const AIInsights = () => {
+  const [language, setLanguage] = useState<Language>('English');
+  const [overview, setOverview] = useState<InsightOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [pageError, setPageError] = useState('');
+  const [selectedClass, setSelectedClass] = useState('all');
+  const [selectedRisk, setSelectedRisk] = useState('all');
+  const [reminderTone, setReminderTone] = useState<'Friendly' | 'Formal'>('Friendly');
+  const [deadline, setDeadline] = useState('');
+  const [reminderStudentId, setReminderStudentId] = useState('');
+  const [reminderText, setReminderText] = useState('');
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const [copiedReminder, setCopiedReminder] = useState(false);
+  const [chatQuestion, setChatQuestion] = useState('');
+  const [chatReply, setChatReply] = useState<ChatReply | null>(null);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
+  const [checkingId, setCheckingId] = useState('');
+  const [issueError, setIssueError] = useState('');
+
+  const loadOverview = useCallback(async (nextLanguage: Language, refresh = false) => {
+    if (refresh) setSummaryLoading(true);
+    try {
+      const result = await callAi<InsightOverview>({ action: 'overview', language: nextLanguage });
+      setOverview(result);
+      setDeadline(current => current || result.semester?.end_date || '');
+      if (result.error) setPageError(result.error);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'AI is not available now, please try again.');
+    } finally {
+      setLoading(false);
+      setSummaryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadOverview(language);
+  }, [language, loadOverview]);
+
+  const filteredRisks = useMemo(() =>
+    (overview?.risks ?? []).filter(student =>
+      (selectedClass === 'all' || student.classId === selectedClass)
+      && (selectedRisk === 'all' || student.risk === selectedRisk),
+    ), [overview?.risks, selectedClass, selectedRisk]);
+
+  const writeReminder = async (student: RiskStudent) => {
+    setReminderStudentId(student.studentId);
+    setReminderText('');
+    setCopiedReminder(false);
+    setReminderLoading(true);
+    setPageError('');
+    try {
+      const result = await callAi<{ message: string }>({
+        action: 'reminder',
+        studentId: student.studentId,
+        language,
+        tone: reminderTone,
+        deadline,
+      });
+      setReminderText(result.message);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : 'AI is not available now, please try again.');
+    } finally {
+      setReminderLoading(false);
+    }
+  };
+
+  const copyReminder = async () => {
+    try {
+      await navigator.clipboard.writeText(reminderText);
+      setCopiedReminder(true);
+    } catch {
+      setPageError('Could not copy the reminder. Please select and copy it manually.');
+    }
+  };
+
+  const askQuestion = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!chatQuestion.trim()) return;
+    setChatLoading(true);
+    setChatError('');
+    setChatReply(null);
+    try {
+      const result = await callAi<ChatReply>({
+        action: 'chat',
+        question: chatQuestion.trim(),
+        language,
+      });
+      setChatReply(result);
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'AI is not available now, please try again.');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const markChecked = async (issueId: string) => {
+    setCheckingId(issueId);
+    setIssueError('');
+    try {
+      await callAi<{ ok: boolean }>({ action: 'mark_checked', paymentId: issueId });
+      setCheckedIds(ids => [...ids, issueId]);
+    } catch (error) {
+      setIssueError(error instanceof Error ? error.message : 'Could not mark this record as checked.');
+    } finally {
+      setCheckingId('');
+    }
+  };
+
+  const issues = (overview?.issues ?? []).map(issue =>
+    checkedIds.includes(issue.id) ? { ...issue, checked: true } : issue,
+  );
+  const openIssues = issues.filter(issue => !issue.checked);
+  const maxChartValue = Math.max(overview?.prediction.expected ?? 0, overview?.prediction.predicted ?? 0, 1);
+  const hasStudents = Boolean(overview?.risks.length || overview?.classes.length);
+
+  return (
+    <div className="mx-auto max-w-7xl space-y-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+            <Sparkles className="h-3.5 w-3.5" /> Helpful school data, made clearer
+          </div>
+          <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">AI Insights</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {overview?.semester?.name ? `Current semester: ${overview.semester.name}` : 'Understand payments and spot what needs attention.'}
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-sm font-medium text-slate-600">
+          Language
+          <select
+            value={language}
+            onChange={event => {
+              setPageError('');
+              setLoading(true);
+              setLanguage(event.target.value as Language);
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-100"
+          >
+            {languages.map(item => <option key={item}>{item}</option>)}
+          </select>
+        </label>
+      </header>
+
+      <div role="note" className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        AI gives suggestions. Please check before you act.
+      </div>
+
+      {pageError && (
+        <div role="alert" className="flex items-start justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <span>{pageError}</span>
+          <button onClick={() => void loadOverview(language, true)} className="shrink-0 font-semibold underline">Try again</button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading school insights…</div>
+      ) : overview?.empty ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
+          <Bot className="mx-auto h-10 w-10 text-slate-300" />
+          <h2 className="mt-3 text-lg font-semibold text-slate-800">No semester yet</h2>
+          <p className="mt-1 text-sm text-slate-500">{overview.error}</p>
+        </div>
+      ) : !hasStudents ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
+          <Bot className="mx-auto h-10 w-10 text-slate-300" />
+          <h2 className="mt-3 text-lg font-semibold text-slate-800">No students yet</h2>
+          <p className="mt-1 text-sm text-slate-500">Add students to see insights.</p>
+        </div>
+      ) : overview && (
+        <>
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800">
+                  <Sparkles className="h-5 w-5 text-indigo-600" /> AI summary
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">A simple snapshot of the current semester.</p>
+              </div>
+              <button
+                onClick={() => {
+                  setPageError('');
+                  void loadOverview(language, true);
+                }}
+                disabled={summaryLoading}
+                className="inline-flex items-center justify-center gap-2 self-start rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                <RefreshCw className={`h-4 w-4 ${summaryLoading ? 'animate-spin' : ''}`} />
+                Refresh summary
+              </button>
+            </div>
+            <div className="mt-5 min-h-16 rounded-xl bg-indigo-50/70 p-4 text-sm leading-7 text-slate-700">
+              {summaryLoading ? <SummarySkeleton /> : overview.summary
+                ?? 'AI is not available now, please try again.'}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {[
+                ['Total collected', overview.collected],
+                ['Total unpaid', overview.unpaid],
+                ['Collection progress', overview.percentageCollected, true],
+                ['Students at risk', overview.risks.length],
+              ].map(([label, value, percent]) => (
+                <div key={String(label)} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">{label}</p>
+                  <p className="mt-1 text-base font-bold text-slate-800">
+                    {percent ? `${Number(value).toFixed(1)}%` : label === 'Students at risk' ? value : formatCurrency(Number(value))}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Early warning for late payers</h2>
+                <p className="mt-1 text-sm text-slate-500">A guide based on this semester’s payments and past semester records.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs font-medium text-slate-500">
+                  Class
+                  <select value={selectedClass} onChange={event => setSelectedClass(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
+                    <option value="all">All classes</option>
+                    {overview.classes.map(schoolClass => <option key={schoolClass.id} value={schoolClass.id}>{schoolClass.name}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-medium text-slate-500">
+                  Risk level
+                  <select value={selectedRisk} onChange={event => setSelectedRisk(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
+                    <option value="all">All levels</option>
+                    <option>High</option><option>Medium</option><option>Low</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            {filteredRisks.length === 0 ? (
+              <div className="mt-5 rounded-xl bg-emerald-50 p-5 text-center text-sm text-emerald-800">
+                No students match these filters. There are no payment warnings to show.
+              </div>
+            ) : (
+              <div className="mt-5 overflow-x-auto">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-3 py-3 font-semibold">Student</th>
+                      <th className="px-3 py-3 font-semibold">Class</th>
+                      <th className="px-3 py-3 text-right font-semibold">Paid</th>
+                      <th className="px-3 py-3 text-right font-semibold">Remaining</th>
+                      <th className="px-3 py-3 font-semibold">Risk</th>
+                      <th className="px-3 py-3 font-semibold">Reminder</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredRisks.map(student => (
+                      <tr key={student.studentId} className="hover:bg-slate-50">
+                        <td className="px-3 py-3 font-medium text-slate-800">{student.studentName}</td>
+                        <td className="px-3 py-3 text-slate-600">{student.className}</td>
+                        <td className="px-3 py-3 text-right tabular-nums text-slate-600">{formatCurrency(student.amountPaid)}</td>
+                        <td className="px-3 py-3 text-right tabular-nums font-semibold text-slate-800">{formatCurrency(student.amountRemaining)}</td>
+                        <td className="px-3 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${riskColor[student.risk]}`}>{student.risk}</span></td>
+                        <td className="px-3 py-3">
+                          <button
+                            onClick={() => void writeReminder(student)}
+                            disabled={reminderLoading}
+                            className="rounded-lg bg-primary-700 px-3 py-2 text-xs font-semibold text-white hover:bg-primary-800 disabled:opacity-60"
+                          >
+                            Write reminder
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+              <label className="text-xs font-medium text-slate-500">
+                Reminder deadline
+                <input type="date" value={deadline} onChange={event => setDeadline(event.target.value)} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700" />
+                <span className="mt-1 block font-normal">Default is the semester end date. Adjust to your school’s deadline.</span>
+              </label>
+              <label className="text-xs font-medium text-slate-500">
+                Message tone
+                <select value={reminderTone} onChange={event => setReminderTone(event.target.value as 'Friendly' | 'Formal')} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800">
+                  <option>Friendly</option><option>Formal</option>
+                </select>
+              </label>
+              <p className="pb-2 text-xs text-slate-500">Messages are drafts only. A teacher must review and send them.</p>
+            </div>
+
+            {reminderStudentId && (
+              <div className="mt-4 rounded-xl border border-primary-100 bg-primary-50/50 p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-slate-800">Reminder draft</h3>
+                  <button onClick={() => { setReminderStudentId(''); setReminderText(''); }} className="text-xs font-semibold text-slate-500 hover:text-slate-800">Close</button>
+                </div>
+                {reminderLoading ? (
+                  <p className="text-sm text-slate-500">Writing a polite reminder…</p>
+                ) : (
+                  <>
+                    <textarea
+                      value={reminderText}
+                      onChange={event => { setReminderText(event.target.value); setCopiedReminder(false); }}
+                      rows={5}
+                      aria-label="Edit reminder message"
+                      className="w-full rounded-lg border border-slate-200 bg-white p-3 text-sm leading-6 text-slate-700 focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                    />
+                    <button onClick={() => void copyReminder()} disabled={!reminderText} className="mt-2 inline-flex items-center gap-2 rounded-lg bg-primary-700 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-800 disabled:opacity-50">
+                      {copiedReminder ? <Check className="h-4 w-4" /> : <Clipboard className="h-4 w-4" />}
+                      {copiedReminder ? 'Copied' : 'Copy'}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800"><Bot className="h-5 w-5 text-indigo-600" /> Ask in normal words</h2>
+              <p className="mt-1 text-sm text-slate-500">Ask about this semester’s payment records.</p>
+              <form onSubmit={event => void askQuestion(event)} className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={chatQuestion}
+                  onChange={event => setChatQuestion(event.target.value)}
+                  maxLength={500}
+                  placeholder="Who has not paid in Senior 3?"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-100"
+                />
+                <button disabled={chatLoading || !chatQuestion.trim()} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-800 disabled:opacity-50">
+                  <Send className="h-4 w-4" /> Ask
+                </button>
+              </form>
+              {chatLoading && <p className="mt-4 text-sm text-slate-500">Checking the payment records…</p>}
+              {chatError && <p role="alert" className="mt-4 text-sm text-red-700">{chatError}</p>}
+              {chatReply && (
+                <div className="mt-4 rounded-xl bg-slate-50 p-4">
+                  <p className="text-sm font-medium leading-6 text-slate-800">{chatReply.answer}</p>
+                  {chatReply.rows.length > 0 && (
+                    <div className="mt-3 overflow-x-auto">
+                      <table className="w-full min-w-[420px] text-left text-xs">
+                        <thead className="text-slate-500"><tr><th className="py-2">Student</th><th>Class</th><th className="text-right">Paid</th><th className="text-right">Remaining</th></tr></thead>
+                        <tbody className="divide-y divide-slate-200">
+                          {chatReply.rows.map((row, index) => (
+                            <tr key={`${row.student}-${index}`}><td className="py-2 font-medium">{row.student}</td><td>{row.class}</td><td className="text-right">{formatCurrency(row.amountPaid)}</td><td className="text-right">{formatCurrency(row.amountRemaining)}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">Semester prediction</h2>
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-amber-700">Estimate, not a fact</p>
+                </div>
+                <span className="rounded-full bg-amber-50 p-2 text-amber-700"><Sparkles className="h-5 w-5" /></span>
+              </div>
+              <div className="mt-5 space-y-4">
+                {[
+                  ['Collected so far', overview.prediction.collected, 'bg-primary-600'],
+                  ['Estimated total', overview.prediction.predicted, 'bg-amber-500'],
+                ].map(([label, value, color]) => (
+                  <div key={String(label)}>
+                    <div className="mb-1 flex justify-between gap-3 text-xs">
+                      <span className="font-medium text-slate-600">{label}</span>
+                      <span className="font-bold text-slate-800">{formatCurrency(Number(value))}</span>
+                    </div>
+                    <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+                      <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, Number(value) / maxChartValue * 100)}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-4 text-sm leading-6 text-slate-600">{overview.prediction.explanation}</p>
+              <p className="mt-2 text-xs text-slate-400">
+                {overview.prediction.historicalSemesters
+                  ? `Compared with ${overview.prediction.historicalSemesters} previous semester(s).`
+                  : 'No completed previous semesters were found.'}
+              </p>
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-bold text-slate-800"><AlertCircle className="h-5 w-5 text-amber-600" /> Mistake checker</h2>
+                <p className="mt-1 text-sm text-slate-500">Possible issues to review. Nothing is changed or deleted automatically.</p>
+              </div>
+              <span className="text-sm font-semibold text-slate-500">{openIssues.length} record(s) to check</span>
+            </div>
+            {issueError && <p role="alert" className="mt-3 text-sm text-red-700">{issueError}</p>}
+            {issues.length === 0 ? (
+              <div className="mt-5 rounded-xl bg-emerald-50 p-5 text-center text-sm text-emerald-800">
+                <CheckCircle2 className="mx-auto mb-2 h-5 w-5" />
+                No possible payment mistakes were found.
+              </div>
+            ) : (
+              <div className="mt-5 overflow-x-auto">
+                <table className="w-full min-w-[760px] text-left text-sm">
+                  <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <tr><th className="px-3 py-3">Student</th><th className="px-3 py-3">Class</th><th className="px-3 py-3 text-right">Amount</th><th className="px-3 py-3">Date</th><th className="px-3 py-3">Possible issue</th><th className="px-3 py-3">Review</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {issues.map(issue => (
+                      <tr key={issue.id} className={issue.checked ? 'bg-slate-50 text-slate-500' : ''}>
+                        <td className="px-3 py-3 font-medium">{issue.studentName}</td>
+                        <td className="px-3 py-3">{issue.className}</td>
+                        <td className="px-3 py-3 text-right">{formatCurrency(issue.amount)}</td>
+                        <td className="px-3 py-3">{issue.paidAt ? new Date(issue.paidAt).toLocaleDateString() : 'Missing'}</td>
+                        <td className="max-w-sm px-3 py-3">{issue.reason}</td>
+                        <td className="px-3 py-3">
+                          {issue.checked ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-700"><CheckCircle2 className="h-4 w-4" /> Checked</span>
+                          ) : (
+                            <button onClick={() => void markChecked(issue.id)} disabled={checkingId === issue.id} className="whitespace-nowrap rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50">
+                              {checkingId === issue.id ? 'Saving…' : 'Mark as checked'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </div>
+  );
+};

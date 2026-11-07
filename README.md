@@ -21,6 +21,9 @@ variable.
 2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel project's
    Environment Variables for every environment you will deploy (Production,
    Preview, and Development as applicable).
+   AI Insights also needs the server-only variables `SUPABASE_URL`,
+   `SUPABASE_ANON_KEY`, and `OPENAI_API_KEY`. Set `OPENAI_MODEL` optionally
+   (defaults to `gpt-4o-mini`). Do not prefix the AI key with `VITE_`.
 3. Deploy with the default build command `npm run build` and output directory
    `dist`. `vercel.json` includes the SPA fallback so direct navigation to app
    routes works.
@@ -33,6 +36,46 @@ variable.
 
 Keep public sign-ups enabled only if anyone should be able to create an account
 and receive full access.
+
+## AI Insights
+
+The authenticated `/admin/ai-insights` page uses the Vercel serverless function
+at `/api/ai`. The function checks the caller's Supabase access token and queries
+school records using that user's session and database policies. The OpenAI key
+is used only on the server. The AI receives summary totals for summaries,
+first name plus balance/deadline for a reminder, or only relevant aggregate
+facts for supported chat questions. Unsupported questions receive
+“I do not have this information.” Reminder messages are drafts; a person must
+edit/review and copy them before sending.
+
+Run the updated `supabase_schema.sql` in the Supabase SQL Editor before using
+this page. It adds `payments.ai_reviewed_at` for the mistake checker's review
+button. Vite's development server does not run Vercel functions; use the Vercel
+CLI's `vercel dev` command to test `/api/ai` locally. Install the CLI if needed
+with `npm install --global vercel`, then configure the environment variables
+above in Vercel or a local `.env.local` file before running `vercel dev`.
+
+### Test the six AI Insights features
+
+1. **AI summary:** Open AI Insights, choose English, Kinyarwanda, or French,
+   then press **Refresh summary**. Confirm the summary includes collected,
+   unpaid, percentage, and the highest- and lowest-collecting classes.
+2. **Early warning:** Add students and current/past semester payment records.
+   Filter the risk table by class and risk. Risk is a guide based on semester
+   progress and incomplete past semesters, not a confirmed late notice.
+3. **Reminder:** Pick a student with a balance, set a deadline and tone, press
+   **Write reminder**, edit the draft, then press **Copy**. Verify nothing is
+   sent automatically.
+4. **Ask in normal words:** Try “Who has not paid in Senior 3?” and “How much
+   did we collect this week?” The answers/table should match database records.
+   Try an unsupported question and confirm it returns “I do not have this
+   information.”
+5. **Semester prediction:** Compare the collected and estimated bars. Confirm
+   the page labels the prediction as an estimate and gives its basis.
+6. **Mistake checker:** Add test records that may be duplicated or put a
+   student's semester total over the fee. Check that they are flagged, then
+   press **Mark as checked**. The page marks them for review but does not edit
+   or delete payment values.
 
 The `.env` file is for local development and is excluded from Git. Configure
 Vercel environment variables separately; local values are not uploaded or
