@@ -25,12 +25,14 @@ variable.
    `dist`. `vercel.json` includes the SPA fallback so direct navigation to app
    routes works.
 4. Apply `supabase_schema.sql` to the connected Supabase project. In Supabase
-   Auth settings, disable public sign-ups and provision users through a trusted
-   admin workflow. Each user must have a matching row in `public.users` with
-   their Auth user UUID and an `admin` or `accountant` role; the application
-   denies dashboard access if the role is missing.
+   Auth settings, enable email sign-ups and configure the site URL and redirect
+   URLs for your deployment. New sign-ups automatically receive the accountant
+   role through a database trigger; the role is never accepted from client
+   metadata. Create administrators through a trusted admin workflow. Each
+   account needs a matching row in `public.users`; the application denies
+   dashboard access if the role is missing.
 
-Example user-role provisioning (replace the values in the SQL Editor):
+Example administrator provisioning (replace the values in the SQL Editor):
 
 ```sql
 INSERT INTO public.users (id, full_name, role)

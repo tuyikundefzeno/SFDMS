@@ -59,6 +59,34 @@ CREATE TABLE IF NOT EXISTS public.users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    INSERT INTO public.users (id, full_name, role)
+    VALUES (
+        NEW.id,
+        COALESCE(
+            NULLIF(BTRIM(NEW.raw_user_meta_data ->> 'full_name'), ''),
+            NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''),
+            NEW.id::TEXT
+        ),
+        'accountant'
+    )
+    ON CONFLICT (id) DO NOTHING;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC;
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     student_id UUID NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
@@ -233,4 +261,7 @@ CREATE POLICY "Admins manage payments" ON public.payments
     WITH CHECK ((SELECT public.get_user_role()) = 'admin');
 CREATE POLICY "Accountants record payments" ON public.payments
     FOR INSERT TO authenticated
-    WITH CHECK ((SELECT public.get_user_role()) = 'accountant');
+    WITH CHECK (
+        (SELECT public.get_user_role()) = 'accountant'
+        AND recorded_by = (SELECT auth.uid())
+    );

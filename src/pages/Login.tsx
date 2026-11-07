@@ -5,9 +5,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { BookOpen } from 'lucide-react';
 
 export const Login = () => {
+  const [isSigningUp, setIsSigningUp] = useState(false);
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { user, role, loading, authError } = useAuth();
 
@@ -23,15 +26,33 @@ export const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setError('');
+    setNotice('');
 
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (signInError) setError(signInError.message);
+      if (isSigningUp) {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: fullName.trim() } },
+        });
+        if (signUpError) {
+          setError(signUpError.message);
+        } else if (!data.session) {
+          setIsSigningUp(false);
+          setPassword('');
+          setNotice('Account created. Check your email to confirm your address, then sign in.');
+        } else {
+          setNotice('Account created. Your accountant account is ready.');
+        }
+      } else {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (signInError) setError(signInError.message);
+      }
     } catch (signInError) {
-      setError(signInError instanceof Error ? signInError.message : 'Unable to sign in.');
+      setError(signInError instanceof Error ? signInError.message : 'Unable to complete your request.');
     } finally {
       setIsLoading(false);
     }
@@ -49,7 +70,7 @@ export const Login = () => {
           School Feeding Management
         </h2>
         <p className="mt-2 text-center text-sm text-slate-600">
-          Please sign in to access your dashboard
+          {isSigningUp ? 'Create an account to access the accountant portal' : 'Sign in to access your dashboard'}
         </p>
         {user && !role && (
           <p role="alert" className="mt-4 text-sm text-red-700">
@@ -62,19 +83,45 @@ export const Login = () => {
         <div className="bg-white py-8 px-4 shadow-xl sm:rounded-xl sm:px-10 border border-slate-100">
           {!user && <form className="space-y-6" onSubmit={handleLogin}>
             {(error || authError) && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
+              <div role="alert" className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
                 {error || authError}
               </div>
             )}
-            
+            {notice && (
+              <div role="status" className="bg-emerald-50 text-emerald-700 p-3 rounded-lg text-sm border border-emerald-100">
+                {notice}
+              </div>
+            )}
+
+            {isSigningUp && (
+              <div>
+                <label htmlFor="full-name" className="block text-sm font-medium text-slate-700">
+                  Full name
+                </label>
+                <div className="mt-1">
+                  <input
+                    id="full-name"
+                    type="text"
+                    required
+                    autoComplete="name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  />
+                </div>
+              </div>
+            )}
+
             <div>
-              <label className="block text-sm font-medium text-slate-700">
+              <label htmlFor="email" className="block text-sm font-medium text-slate-700">
                 Email address
               </label>
               <div className="mt-1">
                 <input
+                  id="email"
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
@@ -83,13 +130,16 @@ export const Login = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">
+              <label htmlFor="password" className="block text-sm font-medium text-slate-700">
                 Password
               </label>
               <div className="mt-1">
                 <input
+                  id="password"
                   type="password"
                   required
+                  autoComplete={isSigningUp ? 'new-password' : 'current-password'}
+                  minLength={isSigningUp ? 8 : undefined}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="appearance-none block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
@@ -103,9 +153,26 @@ export const Login = () => {
                 disabled={isLoading}
                 className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors disabled:opacity-70"
               >
-                {isLoading ? 'Signing in...' : 'Sign in'}
+                {isLoading
+                  ? (isSigningUp ? 'Creating account...' : 'Signing in...')
+                  : (isSigningUp ? 'Create accountant account' : 'Sign in')}
               </button>
             </div>
+            <p className="text-center text-sm text-slate-600">
+              {isSigningUp ? 'Already have an account?' : 'Need an account?'}{' '}
+              <button
+                type="button"
+                disabled={isLoading}
+                onClick={() => {
+                  setIsSigningUp(!isSigningUp);
+                  setError('');
+                  setNotice('');
+                }}
+                className="font-medium text-primary-700 hover:text-primary-800 disabled:opacity-70"
+              >
+                {isSigningUp ? 'Sign in' : 'Sign up'}
+              </button>
+            </p>
           </form>}
         </div>
       </div>
