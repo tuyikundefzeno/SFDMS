@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { REQUIRED_AMOUNT_PER_SEMESTER, formatCurrency } from '../lib/constants';
-import { Search, Plus, CheckCircle, Info } from 'lucide-react';
+import { Search, Plus, Info } from 'lucide-react';
 
 export const AccountantDashboard = () => {
   const { user } = useAuth();
@@ -67,7 +67,11 @@ export const AccountantDashboard = () => {
 
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedStudent || !currentSemester || !amount || !user) return;
+    if (!user) {
+      setMessage('Sign in before recording a payment.');
+      return;
+    }
+    if (!selectedStudent || !currentSemester || !amount) return;
 
     const newAmountNum = parseFloat(amount);
     if (isNaN(newAmountNum) || newAmountNum <= 0) return;
@@ -79,7 +83,7 @@ export const AccountantDashboard = () => {
       student_id: selectedStudent.id,
       semester_id: currentSemester.id,
       amount: newAmountNum,
-      recorded_by: user.id || '00000000-0000-0000-0000-000000000000',
+      recorded_by: user.id,
       note: note,
     });
 

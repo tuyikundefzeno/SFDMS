@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { REQUIRED_AMOUNT_PER_SEMESTER, formatCurrency } from '../lib/constants';
-import { Plus, X, Search, Receipt, Info } from 'lucide-react';
-import { StudentAvatar } from './Students';
-import { getStudentPhoto } from '../lib/studentPhotos';
+import { Plus, X, Search, Receipt, Info, User } from 'lucide-react';
 
 interface GroupedStudentPayment {
   student_id: string;
@@ -19,6 +18,7 @@ interface GroupedStudentPayment {
 }
 
 export const Payments = () => {
+  const { user } = useAuth();
   const [semesters, setSemesters] = useState<any[]>([]);
   const [studentPaymentSummaries, setStudentPaymentSummaries] = useState<GroupedStudentPayment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,6 +161,10 @@ export const Payments = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      setMessage('Sign in before recording a payment.');
+      return;
+    }
     if (!form.student_id || !form.semester_id || !form.amount) return;
 
     const newAmountNum = parseFloat(form.amount);
@@ -173,7 +177,7 @@ export const Payments = () => {
       student_id: form.student_id,
       semester_id: form.semester_id,
       amount: newAmountNum,
-      recorded_by: '00000000-0000-0000-0000-000000000000',
+      recorded_by: user.id,
       note: form.note,
     });
 

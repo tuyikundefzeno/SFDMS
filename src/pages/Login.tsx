@@ -9,13 +9,13 @@ export const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, authError } = useAuth();
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50">Loading...</div>;
   }
 
-  if (user) {
+  if (user && role) {
     return <Navigate to={role === 'admin' ? '/admin' : '/accountant'} replace />;
   }
 
@@ -24,16 +24,16 @@ export const Login = () => {
     setIsLoading(true);
     setError('');
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (signInError) {
-      setError(signInError.message);
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError) setError(signInError.message);
+    } catch (signInError) {
+      setError(signInError instanceof Error ? signInError.message : 'Unable to sign in.');
+    } finally {
       setIsLoading(false);
-    } else {
-      // Role routing is handled by the AuthContext and top-level routing
     }
   };
 
@@ -51,14 +51,19 @@ export const Login = () => {
         <p className="mt-2 text-center text-sm text-slate-600">
           Please sign in to access your dashboard
         </p>
+        {user && !role && (
+          <p role="alert" className="mt-4 text-sm text-red-700">
+            {authError ?? 'Your account does not have an assigned role. Contact an administrator.'}
+          </p>
+        )}
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-xl sm:rounded-xl sm:px-10 border border-slate-100">
-          <form className="space-y-6" onSubmit={handleLogin}>
-            {error && (
+          {!user && <form className="space-y-6" onSubmit={handleLogin}>
+            {(error || authError) && (
               <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
-                {error}
+                {error || authError}
               </div>
             )}
             
@@ -101,7 +106,7 @@ export const Login = () => {
                 {isLoading ? 'Signing in...' : 'Sign in'}
               </button>
             </div>
-          </form>
+          </form>}
         </div>
       </div>
     </div>

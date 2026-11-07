@@ -532,7 +532,7 @@ export const Students = () => {
                         >
                           <StudentAvatar
                             studentId={student.id}
-                            photoUrl={student.photo_url}
+                            photoUrl={photoSrc}
                             name={student.full_name}
                             size="w-11 h-11"
                           />

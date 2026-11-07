@@ -92,7 +92,7 @@ export const LiveReport = () => {
         const existing = map.get(r.student_id)!;
         const newPaid = Number(existing.total_paid) + Number(r.total_paid);
         const req = REQUIRED_AMOUNT_PER_SEMESTER;
-        const pct = req === 0 ? 100 : (newPaid / req) * 100;
+        const pct = (newPaid / req) * 100;
         const status = newPaid >= req ? 'PAID' : newPaid >= req / 2 ? 'PARTIAL' : 'BELOW HALF';
         
         map.set(r.student_id, {

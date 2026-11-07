@@ -1,32 +1,47 @@
-# React + TypeScript + Vite
+# School Feeding Management System
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A React, TypeScript, Vite, and Supabase application for managing school feeding
+students and payments.
 
-Currently, two official plugins are available:
+## Local development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Install dependencies with `npm install`.
+2. Copy `.env.example` to `.env` and set `VITE_SUPABASE_URL` and
+   `VITE_SUPABASE_ANON_KEY` to your Supabase project URL and publishable/anon key.
+3. Apply `supabase_schema.sql` in the Supabase SQL Editor.
+4. Start the app with `npm run dev`.
 
-## React Compiler
+The anon/publishable key is intended for browser use and is not a substitute for
+database access policies. Never use a Supabase `service_role` key in a `VITE_`
+variable.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Vercel deployment
 
-## Expanding the Oxlint configuration
+1. Import this repository into Vercel and select the Vite framework preset.
+2. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in the Vercel project's
+   Environment Variables for every environment you will deploy (Production,
+   Preview, and Development as applicable).
+3. Deploy with the default build command `npm run build` and output directory
+   `dist`. `vercel.json` includes the SPA fallback so direct navigation to app
+   routes works.
+4. Apply `supabase_schema.sql` to the connected Supabase project. In Supabase
+   Auth settings, disable public sign-ups and provision users through a trusted
+   admin workflow. Each user must have a matching row in `public.users` with
+   their Auth user UUID and an `admin` or `accountant` role; the application
+   denies dashboard access if the role is missing.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+Example user-role provisioning (replace the values in the SQL Editor):
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```sql
+INSERT INTO public.users (id, full_name, role)
+VALUES ('<auth-user-uuid>', '<full-name>', 'admin');
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+The `.env` file is for local development and is excluded from Git. Configure
+Vercel environment variables separately; local values are not uploaded or
+transferred by a Git push.
+
+## Checks
+
+- `npm run lint`
+- `npm run build`
