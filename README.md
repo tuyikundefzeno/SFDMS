@@ -51,8 +51,8 @@ is used only on the server. The AI receives summary totals for summaries,
 first name plus balance/deadline for a reminder, or only relevant aggregate
 facts for supported chat questions; matching student names are displayed from
 the database, not sent to Gemini. Questions such as “Who has paid?” and “Who
-has not paid in Senior 3?” are supported. Unsupported questions receive
-“I do not have this information.” Reminder messages are drafts; a person must
+has not paid in Senior 3?” are supported. Unsupported questions receive a
+helpful prompt with examples of supported payment questions. Reminder messages are drafts; a person must
 edit/review and copy them before sending.
 
 Run the updated `supabase_schema.sql` in the Supabase SQL Editor before using
@@ -77,8 +77,8 @@ Vercel; add it to the Vercel project's Environment Variables and redeploy.
    sent automatically.
 4. **Ask in normal words:** Try “Who has paid?”, “Who has not paid in Senior
    3?”, and “How much did we collect this week?” The answers/table should match database records.
-   Try an unsupported question and confirm it returns “I do not have this
-   information.”
+   Try an unsupported question and confirm the helpful prompt suggests
+   supported payment questions.
 5. **Low-payment follow-up:** Review the list of active students with recorded
    current-semester payments above RWF 0 and up to RWF 5,000. Confirm fees and
    balances match the payment records, filter by class, and download the

@@ -69,6 +69,7 @@ const FALLBACK_FEE = 24000;
 const LOW_PAYMENT_LIMIT = 5000;
 const MAX_ROWS = 10000;
 const DEFAULT_LANGUAGE: Language = 'English';
+const CHAT_HELP_MESSAGE = 'I can answer questions about who has paid, who still owes, and collection totals. Try “Who has paid?” or “How much was collected this week?”';
 
 export const config = { maxDuration: 30 };
 
@@ -617,11 +618,17 @@ const getChatAnswer = async (data: SchoolData, current: Semester, question: stri
   if (!question.trim() || question.length > 500) throw new Error('Enter a question of 1 to 500 characters.');
   const facts = getQuestionFacts(data, current, question);
   if (!facts) {
-    return { answer: 'I do not have this information', rows: [] };
+    return { answer: CHAT_HELP_MESSAGE, rows: [] };
   }
   const rows = facts.kind === 'unpaid_students' || facts.kind === 'paid_students'
     ? facts.rows ?? []
     : [];
+  if (facts.kind === 'unpaid_students' && rows.length === 0) {
+    return { answer: 'No students in the selected group have an unpaid balance.', rows };
+  }
+  if (facts.kind === 'paid_students' && rows.length === 0) {
+    return { answer: 'No current-semester payments are recorded for the selected group.', rows };
+  }
   const factsForModel = facts.kind === 'unpaid_students' || facts.kind === 'paid_students'
     ? {
       kind: facts.kind,
@@ -633,7 +640,7 @@ const getChatAnswer = async (data: SchoolData, current: Semester, question: stri
     }
     : facts;
   const result = await askModel(
-    `Answer the school staff member's question in ${language} using ONLY the JSON data provided. Return JSON with "answer" as one short sentence. Do not calculate from facts that are not present. If the data is empty or insufficient, answer exactly "I do not have this information". Do not add a table; the application displays rows separately.`,
+    `Answer the school staff member's question in ${language} using ONLY the JSON data provided. Return JSON with "answer" as one short sentence. Do not calculate from facts that are not present. If the data is empty or insufficient, explain briefly that there is not enough matching payment data and suggest asking who has paid, who still owes, or about collection totals. Do not add a table; the application displays rows separately.`,
     JSON.stringify({ question, facts: factsForModel }),
   );
   const answer = getString(result.answer);
