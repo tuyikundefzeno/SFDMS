@@ -33,18 +33,18 @@ export const LandingPage = () => {
         <div className="relative z-10 max-w-xl">
           <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800">
             <HeartHandshake className="h-4 w-4" />
-            Nourishing brighter futures
+            Simple school lunch payments
           </div>
 
           <h1 className="text-5xl font-extrabold leading-[1.06] tracking-tight text-slate-900 sm:text-6xl lg:text-7xl">
-            Every child
-            <span className="mt-2 block text-emerald-700">deserves a</span>
-            <span className="block">healthy start.</span>
+            Lunch payments,
+            <span className="mt-2 block text-emerald-700">clear and tracked</span>
+            <span className="block">in one place.</span>
           </h1>
 
-          <p className="mt-7 max-w-lg text-lg leading-8 text-slate-600">
-            Good food helps children learn, grow, and thrive. Bring your school
-            feeding program together in one simple place.
+          <p className="mt-7 max-w-lg text-base leading-7 text-slate-600 sm:text-lg sm:leading-8">
+            Record every payment, see who has paid and who still owes, and let AI
+            help with summaries, checks and reminders. Your staff stay in control.
           </p>
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -59,7 +59,7 @@ export const LandingPage = () => {
               href="#how-it-helps"
               className="inline-flex items-center justify-center rounded-full px-7 py-4 text-base font-semibold text-slate-700 transition hover:bg-white"
             >
-              Learn more
+              See how it works
             </a>
           </div>
 
@@ -69,8 +69,8 @@ export const LandingPage = () => {
                 <Utensils className="h-4 w-4" />
               </span>
               <span>
-                <span className="block text-sm font-bold text-slate-800">Meals that matter</span>
-                <span className="mt-1 block text-xs leading-5 text-slate-500">Support healthy, focused learners.</span>
+                <span className="block text-sm font-bold text-slate-800">Clear payment tracking</span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">See who has paid and who still owes.</span>
               </span>
             </div>
             <div className="flex items-start gap-3">
@@ -78,8 +78,8 @@ export const LandingPage = () => {
                 <Leaf className="h-4 w-4" />
               </span>
               <span>
-                <span className="block text-sm font-bold text-slate-800">Stronger communities</span>
-                <span className="mt-1 block text-xs leading-5 text-slate-500">Help children grow and flourish.</span>
+                <span className="block text-sm font-bold text-slate-800">AI-assisted insights</span>
+                <span className="mt-1 block text-xs leading-5 text-slate-500">Review summaries and reminders before acting.</span>
               </span>
             </div>
           </div>
