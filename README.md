@@ -24,8 +24,11 @@ variable.
    AI Insights also needs the server-only variables `SUPABASE_URL`,
    `SUPABASE_ANON_KEY`, and `GEMINI_API_KEY`. Get the Gemini key from Google AI
    Studio, enable the Gemini API for it, and do not prefix it with `VITE_`.
-   `GEMINI_MODEL` is optional and defaults to `gemini-2.5-flash`. These server
-   variables must be set in Vercel separately from your local `.env` file.
+   `GEMINI_MODEL` is optional and defaults to `gemini-3.5-flash-lite`. If a
+   configured model is unavailable to your key, the API checks the models
+   enabled for that key and retries with an available text-generation model.
+   These server variables must be set in Vercel separately from your local
+   `.env` file.
 3. Deploy with the default build command `npm run build` and output directory
    `dist`. `vercel.json` includes the SPA fallback so direct navigation to app
    routes works.

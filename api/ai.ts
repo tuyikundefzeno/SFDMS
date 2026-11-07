@@ -360,40 +360,78 @@ const formatRwf = (amount: number) => `${Math.round(amount).toLocaleString('en-U
 
 const getGeminiKey = () => process.env.GEMINI_API_KEY;
 const getOpenAiKey = () => process.env.OPENAI_API_KEY;
+const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+
+const generateGeminiContent = async (
+  apiKey: string,
+  model: string,
+  systemPrompt: string,
+  userPrompt: string,
+) => {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+    {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemPrompt }] },
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        generationConfig: {
+          temperature: 0.2,
+          responseMimeType: 'application/json',
+        },
+      }),
+    },
+  );
+  return response;
+};
+
+const discoverGeminiModel = async (apiKey: string) => {
+  const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=100', {
+    headers: { 'x-goog-api-key': apiKey },
+  });
+  if (!response.ok) throw new Error(`AI provider failed (${response.status})`);
+  const result = await response.json() as {
+    models?: Array<{ name?: string; supportedGenerationMethods?: string[] }>;
+  };
+  const models = (result.models ?? [])
+    .filter(model => model.name && model.supportedGenerationMethods?.includes('generateContent'))
+    .map(model => model.name!.replace(/^models\//, ''));
+  return models.find(model => model === DEFAULT_GEMINI_MODEL)
+    ?? models.find(model => /flash/i.test(model))
+    ?? models[0];
+};
+
+const askGemini = async (apiKey: string, systemPrompt: string, userPrompt: string) => {
+  const configuredModel = process.env.GEMINI_MODEL?.trim() || DEFAULT_GEMINI_MODEL;
+  let response = await generateGeminiContent(apiKey, configuredModel, systemPrompt, userPrompt);
+
+  if (response.status === 404) {
+    const availableModel = await discoverGeminiModel(apiKey);
+    if (!availableModel) {
+      throw new Error('No Gemini model supporting content generation is available to this API key');
+    }
+    response = await generateGeminiContent(apiKey, availableModel, systemPrompt, userPrompt);
+  }
+  if (!response.ok) throw new Error(`AI provider failed (${response.status})`);
+
+  const result = await response.json() as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const content = result.candidates?.[0]?.content?.parts
+    ?.map(part => part.text ?? '')
+    .join('')
+    .trim();
+  if (!content) throw new Error('AI returned an empty response');
+  return JSON.parse(content) as Record<string, unknown>;
+};
 
 const askModel = async (systemPrompt: string, userPrompt: string) => {
   const geminiApiKey = getGeminiKey();
-  if (geminiApiKey) {
-    const model = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': geminiApiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
-          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: 'application/json',
-          },
-        }),
-      },
-    );
-    if (!response.ok) throw new Error(`AI provider failed (${response.status})`);
-    const result = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const content = result.candidates?.[0]?.content?.parts
-      ?.map(part => part.text ?? '')
-      .join('')
-      .trim();
-    if (!content) throw new Error('AI returned an empty response');
-    return JSON.parse(content) as Record<string, unknown>;
-  }
+  if (geminiApiKey) return askGemini(geminiApiKey, systemPrompt, userPrompt);
 
   const apiKey = getOpenAiKey();
   if (!apiKey) throw new Error('AI is not configured');
@@ -698,6 +736,9 @@ function getAiErrorMessage(error: unknown) {
   if (message.includes('AI is not configured')) {
     return 'AI is not configured. Add GEMINI_API_KEY to the server environment and redeploy.';
   }
+  if (message.includes('No Gemini model supporting content generation')) {
+    return 'This Gemini API key has no text-generation models available. Enable Gemini API access or check the key’s model availability.';
+  }
   const status = Number(message.match(/AI provider failed \((\d+)\)/)?.[1]);
   if (status === 400 || status === 401 || status === 403) {
     return getGeminiKey()
@@ -710,7 +751,7 @@ function getAiErrorMessage(error: unknown) {
       : 'The AI provider quota was exceeded. Check your AI provider quota and billing settings.';
   }
   if (status === 404 && getGeminiKey()) {
-    return 'The configured AI model was not found. Check GEMINI_MODEL in the server environment.';
+    return 'Gemini could not find a usable model for this API key. Remove GEMINI_MODEL to use automatic model selection, or set it to a model available to your key, then redeploy.';
   }
   if (status) return `The AI provider request failed (${status}). Check the server configuration and try again.`;
   return 'The AI response could not be processed. Check the server logs and try again.';
