@@ -88,6 +88,11 @@ const callAi = async <T,>(payload: Record<string, unknown>): Promise<T> => {
     },
     body: JSON.stringify(payload),
   });
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    throw new Error(import.meta.env.DEV
+      ? 'The AI API is not running. Start the app with `vercel dev`; `npm run dev` does not run API functions.'
+      : 'The AI API returned an unexpected response. Check that the Vercel API function deployed successfully.');
+  }
   if (!response.ok) throw new Error(await getApiError(response));
   return response.json() as Promise<T>;
 };
@@ -123,6 +128,7 @@ export const AIInsights = () => {
   const [issueError, setIssueError] = useState('');
 
   const loadOverview = useCallback(async (nextLanguage: Language, refresh = false) => {
+    setPageError('');
     if (refresh) setSummaryLoading(true);
     try {
       const result = await callAi<InsightOverview>({ action: 'overview', language: nextLanguage });
@@ -296,7 +302,7 @@ export const AIInsights = () => {
             </div>
             <div className="mt-5 min-h-16 rounded-xl bg-indigo-50/70 p-4 text-sm leading-7 text-slate-700">
               {summaryLoading ? <SummarySkeleton /> : overview.summary
-                ?? 'AI is not available now, please try again.'}
+                ?? 'AI summary is unavailable. Check the setup message above, then try again.'}
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
               {[
@@ -431,7 +437,7 @@ export const AIInsights = () => {
                   value={chatQuestion}
                   onChange={event => setChatQuestion(event.target.value)}
                   maxLength={500}
-                  placeholder="Who has not paid in Senior 3?"
+                  placeholder="Who has paid? Who has not paid in Senior 3?"
                   className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-100"
                 />
                 <button disabled={chatLoading || !chatQuestion.trim()} className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-800 disabled:opacity-50">

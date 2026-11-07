@@ -358,9 +358,43 @@ const getPrediction = (data: SchoolData, current: Semester, collected: number, e
 
 const formatRwf = (amount: number) => `${Math.round(amount).toLocaleString('en-US')} RWF`;
 
+const getGeminiKey = () => process.env.GEMINI_API_KEY;
 const getOpenAiKey = () => process.env.OPENAI_API_KEY;
 
 const askModel = async (systemPrompt: string, userPrompt: string) => {
+  const geminiApiKey = getGeminiKey();
+  if (geminiApiKey) {
+    const model = process.env.GEMINI_MODEL ?? 'gemini-2.5-flash';
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': geminiApiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: 'application/json',
+          },
+        }),
+      },
+    );
+    if (!response.ok) throw new Error(`AI provider failed (${response.status})`);
+    const result = await response.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+    };
+    const content = result.candidates?.[0]?.content?.parts
+      ?.map(part => part.text ?? '')
+      .join('')
+      .trim();
+    if (!content) throw new Error('AI returned an empty response');
+    return JSON.parse(content) as Record<string, unknown>;
+  }
+
   const apiKey = getOpenAiKey();
   if (!apiKey) throw new Error('AI is not configured');
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -453,19 +487,26 @@ const getQuestionFacts = (data: SchoolData, current: Semester, question: string)
     normalized.includes(schoolClass.name.toLocaleLowerCase())
     || (schoolClass.level && normalized.includes(schoolClass.level.toLocaleLowerCase())),
   );
-  const unpaidIntent = /(who|which|student|not paid|unpaid|haven.t paid|not yet paid)/i.test(question);
-  if (unpaidIntent && classMatch) {
-    const rows = activeStudents
-      .filter(student => student.class_id === classMatch.id)
+  const asksAboutStudents = /\b(who|which|list|names? of|how many)\b/i.test(question);
+  const asksAboutPaymentStatus = /\b(paid|payment|unpaid|owe|owing|balance)\b/i.test(question);
+  if (asksAboutStudents && asksAboutPaymentStatus) {
+    const asksWhoIsUnpaid = /\b(unpaid|not paid|haven.t paid|hasn.t paid|still owe|owing|outstanding)\b/i.test(question);
+    const matchingStudents = activeStudents
+      .filter(student => !classMatch || student.class_id === classMatch.id)
       .map(student => ({
         student: student.full_name,
-        class: classMatch.name,
+        class: data.classes.find(schoolClass => schoolClass.id === student.class_id)?.name ?? 'Unknown class',
         amountPaid: totalPaid(getStudentPayments(data, student.id, current.id)),
         amountRemaining: Math.max(0, getFee(data, student.class_id, current.id)
           - totalPaid(getStudentPayments(data, student.id, current.id))),
       }))
-      .filter(row => row.amountRemaining > 0);
-    return { kind: 'unpaid_students', className: classMatch.name, currency: 'RWF', rows };
+      .filter(row => asksWhoIsUnpaid ? row.amountRemaining > 0 : row.amountPaid > 0);
+    return {
+      kind: asksWhoIsUnpaid ? 'unpaid_students' : 'paid_students',
+      className: classMatch?.name ?? null,
+      currency: 'RWF',
+      rows: matchingStudents,
+    };
   }
 
   const collectionIntent = /(collect(?:ed|ion)?|received|how much.*paid)/i.test(question);
@@ -511,14 +552,17 @@ const getChatAnswer = async (data: SchoolData, current: Semester, question: stri
   if (!facts) {
     return { answer: 'I do not have this information', rows: [] };
   }
-  const rows = facts.kind === 'unpaid_students' ? facts.rows ?? [] : [];
-  const factsForModel = facts.kind === 'unpaid_students'
+  const rows = facts.kind === 'unpaid_students' || facts.kind === 'paid_students'
+    ? facts.rows ?? []
+    : [];
+  const factsForModel = facts.kind === 'unpaid_students' || facts.kind === 'paid_students'
     ? {
       kind: facts.kind,
       className: facts.className,
       currency: facts.currency,
       studentCount: rows.length,
       totalRemaining: rows.reduce((sum, row) => sum + row.amountRemaining, 0),
+      totalPaid: rows.reduce((sum, row) => sum + row.amountPaid, 0),
     }
     : facts;
   const result = await askModel(
@@ -591,14 +635,16 @@ export default async function handler(req: Request, res: Response) {
     if (action === 'overview') {
       const overview = getOverview(data, current, language);
       let summary: string | null = null;
-      if (data.students.length && getOpenAiKey()) {
+      let aiError: string | undefined;
+      if (data.students.length) {
         try {
           summary = await generateSummary(overview, language);
-        } catch {
-          summary = null;
+        } catch (error) {
+          console.error('AI Insights summary failed:', error);
+          aiError = getAiErrorMessage(error);
         }
       }
-      return json(res, 200, { ...overview, summary });
+      return json(res, 200, { ...overview, summary, ...(aiError ? { error: aiError } : {}) });
     }
 
     if (action === 'reminder') {
@@ -622,12 +668,50 @@ export default async function handler(req: Request, res: Response) {
     console.error('AI Insights request failed:', error);
     const message = error instanceof Error ? error.message : '';
     if (message.includes('AI is not configured') || message.includes('AI provider')) {
-      return json(res, 503, { error: 'AI is not available now, please try again.' });
+      return json(res, 503, { error: getAiErrorMessage(error) });
     }
     if (message.includes('Invalid request')) return json(res, 400, { error: 'Invalid request.' });
     if (message.includes('Backend request failed') || message.includes('Supabase is not configured')) {
-      return json(res, 503, { error: 'Could not load school data. Please try again.' });
+      if (message.includes('(400)')) {
+        return json(res, 503, {
+          error: 'Supabase rejected the school-data query. Run the latest supabase_schema.sql in your project and verify its tables.',
+        });
+      }
+      if (message.includes('(401)') || message.includes('(403)')) {
+        return json(res, 503, {
+          error: 'Supabase denied access. Check the Supabase server environment variables and sign in again.',
+        });
+      }
+      if (message.includes('Supabase is not configured')) {
+        return json(res, 503, {
+          error: 'Supabase server configuration is missing. Set SUPABASE_URL and SUPABASE_ANON_KEY, then redeploy.',
+        });
+      }
+      return json(res, 503, { error: 'Could not load school data. Check the Supabase configuration and try again.' });
     }
     return json(res, 500, { error: 'AI is not available now, please try again.' });
   }
+}
+
+function getAiErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  if (message.includes('AI is not configured')) {
+    return 'AI is not configured. Add GEMINI_API_KEY to the server environment and redeploy.';
+  }
+  const status = Number(message.match(/AI provider failed \((\d+)\)/)?.[1]);
+  if (status === 400 || status === 401 || status === 403) {
+    return getGeminiKey()
+      ? 'The AI provider rejected its API key. Verify GEMINI_API_KEY and enable the Gemini API for that key.'
+      : 'The AI provider rejected its API key. Verify the configured AI key and provider settings.';
+  }
+  if (status === 429) {
+    return getGeminiKey()
+      ? 'The AI provider quota was exceeded. Check your Gemini API quota and billing settings.'
+      : 'The AI provider quota was exceeded. Check your AI provider quota and billing settings.';
+  }
+  if (status === 404 && getGeminiKey()) {
+    return 'The configured AI model was not found. Check GEMINI_MODEL in the server environment.';
+  }
+  if (status) return `The AI provider request failed (${status}). Check the server configuration and try again.`;
+  return 'The AI response could not be processed. Check the server logs and try again.';
 }

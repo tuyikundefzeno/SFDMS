@@ -63,26 +63,6 @@ export const LandingPage = () => {
             </a>
           </div>
 
-          <div id="how-it-helps" className="mt-12 grid scroll-mt-8 max-w-lg grid-cols-2 gap-4 border-t border-slate-200 pt-7">
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
-                <Utensils className="h-4 w-4" />
-              </span>
-              <span>
-                <span className="block text-sm font-bold text-slate-800">Clear payment tracking</span>
-                <span className="mt-1 block text-xs leading-5 text-slate-500">See who has paid and who still owes.</span>
-              </span>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-lime-100 text-lime-800">
-                <Leaf className="h-4 w-4" />
-              </span>
-              <span>
-                <span className="block text-sm font-bold text-slate-800">AI-assisted insights</span>
-                <span className="mt-1 block text-xs leading-5 text-slate-500">Review summaries and reminders before acting.</span>
-              </span>
-            </div>
-          </div>
         </div>
 
         <div className="relative mx-auto w-full max-w-2xl lg:max-w-none">
@@ -108,6 +88,50 @@ export const LandingPage = () => {
           <div className="absolute -bottom-5 left-5 rounded-2xl border border-white/80 bg-white/95 px-4 py-3 shadow-xl backdrop-blur sm:-left-7 sm:bottom-8 sm:px-5 sm:py-4">
             <p className="text-xs font-medium text-slate-500">Better meals</p>
             <p className="mt-0.5 text-sm font-bold text-emerald-800 sm:text-base">Brighter school days</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="how-it-helps" aria-labelledby="how-it-helps-title" className="scroll-mt-8 border-t border-slate-200 bg-white px-6 py-16 sm:px-10 sm:py-20 lg:px-12">
+        <div className="mx-auto max-w-7xl">
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="text-sm font-bold uppercase tracking-[0.2em] text-emerald-700">How it works</p>
+            <h2 id="how-it-helps-title" className="mt-3 text-3xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
+              School meal payments, made easier to manage.
+            </h2>
+            <p className="mt-4 text-base leading-7 text-slate-600">
+              Keep student contributions organized and get a clear picture of payments throughout the semester.
+            </p>
+          </div>
+
+          <div className="mt-10 grid gap-5 md:grid-cols-3">
+            <article className="rounded-2xl border border-slate-200 bg-[#fbfaf7] p-6">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-800">
+                <BookOpen className="h-5 w-5" />
+              </span>
+              <h3 className="mt-5 text-lg font-bold text-slate-900">Set up your school</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Organize students into classes and set up semesters to keep records in order.
+              </p>
+            </article>
+            <article className="rounded-2xl border border-slate-200 bg-[#fbfaf7] p-6">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
+                <Utensils className="h-5 w-5" />
+              </span>
+              <h3 className="mt-5 text-lg font-bold text-slate-900">Record meal payments</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Add each student’s payment and track their total and remaining balance for the semester.
+              </p>
+            </article>
+            <article className="rounded-2xl border border-slate-200 bg-[#fbfaf7] p-6">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-lime-100 text-lime-800">
+                <Leaf className="h-5 w-5" />
+              </span>
+              <h3 className="mt-5 text-lg font-bold text-slate-900">Review progress and insights</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Check payment reports and review AI-assisted summaries and reminders before acting.
+              </p>
+            </article>
           </div>
         </div>
       </section>

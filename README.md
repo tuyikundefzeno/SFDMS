@@ -22,8 +22,10 @@ variable.
    Environment Variables for every environment you will deploy (Production,
    Preview, and Development as applicable).
    AI Insights also needs the server-only variables `SUPABASE_URL`,
-   `SUPABASE_ANON_KEY`, and `OPENAI_API_KEY`. Set `OPENAI_MODEL` optionally
-   (defaults to `gpt-4o-mini`). Do not prefix the AI key with `VITE_`.
+   `SUPABASE_ANON_KEY`, and `GEMINI_API_KEY`. Get the Gemini key from Google AI
+   Studio, enable the Gemini API for it, and do not prefix it with `VITE_`.
+   `GEMINI_MODEL` is optional and defaults to `gemini-2.5-flash`. These server
+   variables must be set in Vercel separately from your local `.env` file.
 3. Deploy with the default build command `npm run build` and output directory
    `dist`. `vercel.json` includes the SPA fallback so direct navigation to app
    routes works.
@@ -41,10 +43,12 @@ and receive full access.
 
 The authenticated `/admin/ai-insights` page uses the Vercel serverless function
 at `/api/ai`. The function checks the caller's Supabase access token and queries
-school records using that user's session and database policies. The OpenAI key
+school records using that user's session and database policies. The Gemini key
 is used only on the server. The AI receives summary totals for summaries,
 first name plus balance/deadline for a reminder, or only relevant aggregate
-facts for supported chat questions. Unsupported questions receive
+facts for supported chat questions; matching student names are displayed from
+the database, not sent to Gemini. Questions such as “Who has paid?” and “Who
+has not paid in Senior 3?” are supported. Unsupported questions receive
 “I do not have this information.” Reminder messages are drafts; a person must
 edit/review and copy them before sending.
 
@@ -52,8 +56,10 @@ Run the updated `supabase_schema.sql` in the Supabase SQL Editor before using
 this page. It adds `payments.ai_reviewed_at` for the mistake checker's review
 button. Vite's development server does not run Vercel functions; use the Vercel
 CLI's `vercel dev` command to test `/api/ai` locally. Install the CLI if needed
-with `npm install --global vercel`, then configure the environment variables
-above in Vercel or a local `.env.local` file before running `vercel dev`.
+with `npm install --global vercel`, then set the server variables above in
+Vercel or a local `.env.local` file before running `vercel dev`. A Gemini key
+in `.env` is not automatically transferred when you push or deploy through
+Vercel; add it to the Vercel project's Environment Variables and redeploy.
 
 ### Test the six AI Insights features
 
@@ -66,8 +72,8 @@ above in Vercel or a local `.env.local` file before running `vercel dev`.
 3. **Reminder:** Pick a student with a balance, set a deadline and tone, press
    **Write reminder**, edit the draft, then press **Copy**. Verify nothing is
    sent automatically.
-4. **Ask in normal words:** Try “Who has not paid in Senior 3?” and “How much
-   did we collect this week?” The answers/table should match database records.
+4. **Ask in normal words:** Try “Who has paid?”, “Who has not paid in Senior
+   3?”, and “How much did we collect this week?” The answers/table should match database records.
    Try an unsupported question and confirm it returns “I do not have this
    information.”
 5. **Semester prediction:** Compare the collected and estimated bars. Confirm
