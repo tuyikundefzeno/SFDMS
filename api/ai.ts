@@ -221,6 +221,7 @@ const analyzeRisks = (data: SchoolData, current: Semester) => {
     return {
       studentId: student.id,
       studentName: student.full_name,
+      admissionNumber: student.admission_number,
       classId: student.class_id,
       className: data.classes.find(item => item.id === student.class_id)?.name ?? 'Unknown class',
       amountPaid: paid,
@@ -748,7 +749,7 @@ export default async function handler(req: Request, res: Response) {
     if (message.includes('Backend request failed') || message.includes('Supabase is not configured')) {
       if (message.includes('(400)')) {
         return json(res, 503, {
-          error: 'Supabase rejected the school-data query. Run the latest supabase_schema.sql in your project and verify its tables.',
+          error: 'Supabase rejected the school-data query. Run supabase_schema.sql and supabase_multischool_migration.sql, then verify the tables and policies.',
         });
       }
       if (message.includes('(401)') || message.includes('(403)')) {

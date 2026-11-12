@@ -12,6 +12,7 @@ import { Classes } from './pages/Classes';
 import { Semesters } from './pages/Semesters';
 import { Payments } from './pages/Payments';
 import { AIInsights } from './pages/AIInsights';
+import { SchoolAdmin } from './pages/SchoolAdmin';
 
 const RequireAuth = () => {
   const { user, loading } = useAuth();
@@ -20,6 +21,13 @@ const RequireAuth = () => {
     return <div className="min-h-screen flex items-center justify-center bg-slate-50">Loading...</div>;
   }
   if (!user) return <Navigate to="/login" replace />;
+  return <Outlet />;
+};
+
+const RequireAdmin = () => {
+  const { role, profileLoading } = useAuth();
+  if (profileLoading) return <div className="min-h-screen flex items-center justify-center bg-slate-50">Loading profile...</div>;
+  if (role !== 'admin') return <Navigate to="/admin" replace />;
   return <Outlet />;
 };
 
@@ -40,6 +48,9 @@ function App() {
               <Route path="/admin/semesters" element={<Semesters />} />
               <Route path="/admin/payments" element={<Payments />} />
               <Route path="/admin/ai-insights" element={<AIInsights />} />
+              <Route element={<RequireAdmin />}>
+                <Route path="/admin/schools" element={<SchoolAdmin />} />
+              </Route>
               <Route path="*" element={<Navigate to="/admin" replace />} />
             </Route>
           </Route>

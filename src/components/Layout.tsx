@@ -1,9 +1,9 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { LogOut, LayoutDashboard, FileBarChart, Users, BookOpen, CreditCard, CalendarDays, Sparkles } from 'lucide-react';
+import { LogOut, LayoutDashboard, FileBarChart, Users, BookOpen, CreditCard, CalendarDays, Sparkles, School } from 'lucide-react';
 
 export const Layout = () => {
-  const { user, signOut } = useAuth();
+  const { user, role, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -21,6 +21,7 @@ export const Layout = () => {
     { name: 'Classes', path: '/admin/classes', icon: BookOpen },
     { name: 'Semesters', path: '/admin/semesters', icon: CalendarDays },
     { name: 'AI Insights', path: '/admin/ai-insights', icon: Sparkles },
+    ...(role === 'admin' ? [{ name: 'Schools', path: '/admin/schools', icon: School }] : []),
   ];
 
   if (!user) return <Outlet />;
@@ -31,7 +32,7 @@ export const Layout = () => {
       <aside className="w-full bg-primary-900 text-white flex flex-col shadow-xl lg:w-64 lg:shrink-0">
         <div className="p-4 lg:p-6">
           <h1 className="text-xl font-bold leading-tight">School Feeding</h1>
-          <p className="text-primary-300 text-sm mt-1">Full access</p>
+          <p className="text-primary-300 text-sm mt-1">{role === 'admin' ? 'Administrator' : 'School access'}</p>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-2 pb-2 lg:mt-2 lg:flex-1 lg:flex-col lg:space-y-1 lg:overflow-x-visible lg:px-4 lg:pb-0">
           {navItems.map((item) => (

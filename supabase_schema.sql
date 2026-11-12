@@ -24,9 +24,18 @@ CREATE TABLE IF NOT EXISTS public.semesters (
     CONSTRAINT semesters_valid_dates CHECK (end_date >= start_date)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS one_current_semester
-    ON public.semesters (is_current)
-    WHERE is_current = true;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'semesters' AND column_name = 'school_id'
+    ) THEN
+        EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS one_current_semester_per_school ON public.semesters (school_id) WHERE is_current = true';
+    ELSE
+        EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS one_current_semester ON public.semesters (is_current) WHERE is_current = true';
+    END IF;
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS public.students (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -65,16 +74,33 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-    INSERT INTO public.users (id, full_name)
-    VALUES (
-        NEW.id,
-        COALESCE(
-            NULLIF(BTRIM(NEW.raw_user_meta_data ->> 'full_name'), ''),
-            NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''),
-            NEW.id::TEXT
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'school_id'
+    ) THEN
+        EXECUTE $sql$
+            INSERT INTO public.users (id, full_name, school_id)
+            VALUES ($1, $2, (SELECT id FROM public.schools WHERE name = 'Default School' ORDER BY created_at, id LIMIT 1))
+            ON CONFLICT (id) DO NOTHING
+        $sql$
+        USING NEW.id,
+              COALESCE(
+                  NULLIF(BTRIM(NEW.raw_user_meta_data ->> 'full_name'), ''),
+                  NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''),
+                  NEW.id::TEXT
+              );
+    ELSE
+        INSERT INTO public.users (id, full_name)
+        VALUES (
+            NEW.id,
+            COALESCE(
+                NULLIF(BTRIM(NEW.raw_user_meta_data ->> 'full_name'), ''),
+                NULLIF(split_part(COALESCE(NEW.email, ''), '@', 1), ''),
+                NEW.id::TEXT
+            )
         )
-    )
-    ON CONFLICT (id) DO NOTHING;
+        ON CONFLICT (id) DO NOTHING;
+    END IF;
     RETURN NEW;
 END;
 $$;
@@ -85,16 +111,38 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
 
-INSERT INTO public.users (id, full_name)
-SELECT
-    u.id,
-    COALESCE(
-        NULLIF(BTRIM(u.raw_user_meta_data ->> 'full_name'), ''),
-        NULLIF(split_part(COALESCE(u.email, ''), '@', 1), ''),
-        u.id::TEXT
-    )
-FROM auth.users AS u
-ON CONFLICT (id) DO NOTHING;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'school_id'
+    ) THEN
+        EXECUTE $sql$
+            INSERT INTO public.users (id, full_name, school_id)
+            SELECT u.id,
+                   COALESCE(
+                       NULLIF(BTRIM(u.raw_user_meta_data ->> 'full_name'), ''),
+                       NULLIF(split_part(COALESCE(u.email, ''), '@', 1), ''),
+                       u.id::TEXT
+                   ),
+                   (SELECT id FROM public.schools WHERE name = 'Default School' ORDER BY created_at, id LIMIT 1)
+            FROM auth.users AS u
+            ON CONFLICT (id) DO NOTHING
+        $sql$;
+    ELSE
+        INSERT INTO public.users (id, full_name)
+        SELECT
+            u.id,
+            COALESCE(
+                NULLIF(BTRIM(u.raw_user_meta_data ->> 'full_name'), ''),
+                NULLIF(split_part(COALESCE(u.email, ''), '@', 1), ''),
+                u.id::TEXT
+            )
+        FROM auth.users AS u
+        ON CONFLICT (id) DO NOTHING;
+    END IF;
+END;
+$$;
 
 CREATE TABLE IF NOT EXISTS public.payments (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -175,50 +223,47 @@ DO $$
 DECLARE
     policy_record RECORD;
 BEGIN
-    FOR policy_record IN
-        SELECT schemaname, tablename, policyname
-        FROM pg_policies
-        WHERE schemaname = 'public'
-          AND tablename = ANY (ARRAY[
-              'schools', 'classes', 'semesters', 'students',
-              'fee_structure', 'users', 'payments'
-          ])
-    LOOP
-        EXECUTE format(
-            'DROP POLICY %I ON %I.%I',
-            policy_record.policyname,
-            policy_record.schemaname,
-            policy_record.tablename
-        );
-    END LOOP;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'school_id'
+    ) THEN
+        FOR policy_record IN
+            SELECT schemaname, tablename, policyname
+            FROM pg_policies
+            WHERE schemaname = 'public'
+              AND tablename = ANY (ARRAY[
+                  'schools', 'classes', 'semesters', 'students',
+                  'fee_structure', 'users', 'payments'
+              ])
+        LOOP
+            EXECUTE format(
+                'DROP POLICY %I ON %I.%I',
+                policy_record.policyname,
+                policy_record.schemaname,
+                policy_record.tablename
+            );
+        END LOOP;
+    END IF;
 END;
 $$;
 
-DROP FUNCTION IF EXISTS public.get_user_role();
-ALTER TABLE public.users DROP COLUMN IF EXISTS role;
-
-CREATE POLICY "Authenticated users manage schools" ON public.schools
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated users manage classes" ON public.classes
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated users manage semesters" ON public.semesters
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated users manage students" ON public.students
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated users manage fee structure" ON public.fee_structure
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated users read profiles" ON public.users
-    FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Users manage own profile" ON public.users
-    FOR UPDATE TO authenticated
-    USING (id = (SELECT auth.uid()))
-    WITH CHECK (id = (SELECT auth.uid()));
-CREATE POLICY "Authenticated users read payments" ON public.payments
-    FOR SELECT TO authenticated USING (true);
-CREATE POLICY "Authenticated users record payments" ON public.payments
-    FOR INSERT TO authenticated
-    WITH CHECK (recorded_by = (SELECT auth.uid()));
-CREATE POLICY "Authenticated users update payments" ON public.payments
-    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated users delete payments" ON public.payments
-    FOR DELETE TO authenticated USING (true);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'school_id'
+    ) THEN
+        EXECUTE 'CREATE POLICY "Authenticated users manage schools" ON public.schools FOR ALL TO authenticated USING (true) WITH CHECK (true)';
+        EXECUTE 'CREATE POLICY "Authenticated users manage classes" ON public.classes FOR ALL TO authenticated USING (true) WITH CHECK (true)';
+        EXECUTE 'CREATE POLICY "Authenticated users manage semesters" ON public.semesters FOR ALL TO authenticated USING (true) WITH CHECK (true)';
+        EXECUTE 'CREATE POLICY "Authenticated users manage students" ON public.students FOR ALL TO authenticated USING (true) WITH CHECK (true)';
+        EXECUTE 'CREATE POLICY "Authenticated users manage fee structure" ON public.fee_structure FOR ALL TO authenticated USING (true) WITH CHECK (true)';
+        EXECUTE 'CREATE POLICY "Authenticated users read profiles" ON public.users FOR SELECT TO authenticated USING (true)';
+        EXECUTE 'CREATE POLICY "Users manage own profile" ON public.users FOR UPDATE TO authenticated USING (id = (SELECT auth.uid())) WITH CHECK (id = (SELECT auth.uid()))';
+        EXECUTE 'CREATE POLICY "Authenticated users read payments" ON public.payments FOR SELECT TO authenticated USING (true)';
+        EXECUTE 'CREATE POLICY "Authenticated users record payments" ON public.payments FOR INSERT TO authenticated WITH CHECK (recorded_by = (SELECT auth.uid()))';
+        EXECUTE 'CREATE POLICY "Authenticated users update payments" ON public.payments FOR UPDATE TO authenticated USING (true) WITH CHECK (true)';
+        EXECUTE 'CREATE POLICY "Authenticated users delete payments" ON public.payments FOR DELETE TO authenticated USING (true)';
+    END IF;
+END;
+$$;
